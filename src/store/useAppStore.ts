@@ -1,12 +1,12 @@
 import { create } from 'zustand';
+import { supabase } from '@/lib/supabase';
 import { WEEKLY_PLAN } from '@/data/weeklyPlan';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Screen = 'home' | 'agenda' | 'evolution' | 'files' | 'workout-logger' | 'exercise-list';
 
 export type BodyMetric = {
   id: string;
+  user_id?: string;
   date: string;
   weight_kg: number;
   notes: string;
@@ -15,6 +15,7 @@ export type BodyMetric = {
 
 export type DailyTask = {
   id: string;
+  user_id?: string;
   date: string;
   task_type: string;
   title: string;
@@ -39,24 +40,9 @@ export type ActiveSetRow = {
   completed: boolean;
 };
 
-// ─── LocalStorage helpers ─────────────────────────────────────────────────────
-
-function loadJSON<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveJSON(key: string, value: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getWorkoutTitleForDate(dateStr: string): { title: string; subtitle: string; dayKey: string } | null {
+function getWorkoutTitleForDate(dateStr: string): { title: string; subtitle: string } | null {
   const d = new Date(dateStr + 'T12:00:00');
   const day = d.getDay();
   if (day === 0) return null;
@@ -65,20 +51,12 @@ function getWorkoutTitleForDate(dateStr: string): { title: string; subtitle: str
   return {
     title: `${plan.dayName.toUpperCase()} — ${plan.muscleGroup.toUpperCase()}`,
     subtitle: plan.exercises.map(e => e.name).slice(0, 3).join(' · ') + (plan.exercises.length > 3 ? '...' : ''),
-    dayKey: plan.dayKey,
   };
 }
 
-function buildDefaultTasks(date: string): DailyTask[] {
-  const workoutInfo = getWorkoutTitleForDate(date);
-  const now = new Date().toISOString();
-  const tasks: DailyTask[] = [];
-  if (workoutInfo) {
-    tasks.push({ id: `${date}-workout`, date, task_type: 'workout', title: workoutInfo.title, subtitle: workoutInfo.subtitle, completed: false, created_at: now });
-  }
-  tasks.push({ id: `${date}-steps`, date, task_type: 'steps', title: 'Meta de pasos', subtitle: '10.000 pasos', completed: false, created_at: now });
-  tasks.push({ id: `${date}-nutrition`, date, task_type: 'nutrition', title: 'Nutrición diaria', subtitle: '2.400 kcal · 180g proteína', completed: false, created_at: now });
-  return tasks;
+async function getUserId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user?.id ?? null;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -109,6 +87,7 @@ type AppState = {
   toggleDailyTask: (id: string) => Promise<void>;
   addCardioTask: (date: string, type: string, duration: string) => void;
   removeTask: (id: string) => void;
+  saveWorkoutWeight: (exerciseId: string, setNumber: number, weightKg: string, reps: string) => Promise<void>;
   initWorkoutSets: (targetSets: number, targetReps: number) => void;
   updateSetField: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
   toggleSetComplete: (id: string) => void;
@@ -117,24 +96,23 @@ type AppState = {
   stopRestTimer: () => void;
 };
 
-const getInitialDarkMode = () => {
-  try { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
-  catch { return false; }
-};
-
-// compute today's dayKey for initial workout state
 const todayDayKey = (() => {
   const d = new Date().getDay();
   const keys = ['monday','tuesday','wednesday','thursday','friday','saturday'];
   return d >= 1 && d <= 6 ? keys[d - 1] : 'monday';
 })();
 
+const getInitialDarkMode = () => {
+  try { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
+  catch { return false; }
+};
+
 export const useAppStore = create<AppState>((set, get) => ({
   activeScreen: 'home',
   darkMode: getInitialDarkMode(),
-  bodyMetrics: loadJSON<BodyMetric[]>('fittrack_metrics', []),
+  bodyMetrics: [],
   dailyTasks: [],
-  weightGoal: loadJSON<WeightGoal | null>('fittrack_goal', null),
+  weightGoal: null,
   selectedDate: new Date().toISOString().split('T')[0],
   activeWorkoutSets: [],
   activeWorkoutDayKey: todayDayKey,
@@ -159,69 +137,108 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().fetchDailyTasks(date);
   },
 
-  // Sets which day to open in WorkoutLogger
-  setWorkoutDay: (dayKey: string, mode: 'preview' | 'active' = 'preview') => set({ activeWorkoutDayKey: dayKey, activeWorkoutMode: mode }),
+  setWorkoutDay: (dayKey, mode = 'preview') => set({ activeWorkoutDayKey: dayKey, activeWorkoutMode: mode }),
 
   fetchBodyMetrics: async () => {
-    set({ bodyMetrics: loadJSON<BodyMetric[]>('fittrack_metrics', []) });
+    const userId = await getUserId();
+    if (!userId) return;
+    const { data } = await supabase
+      .from('body_metrics')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: true });
+    if (data) set({ bodyMetrics: data });
   },
 
   fetchDailyTasks: async (date: string) => {
-    const allTasks = loadJSON<DailyTask[]>('fittrack_tasks', []);
-    const dayTasks = allTasks.filter(t => t.date === date);
-    if (dayTasks.length > 0) {
-      set({ dailyTasks: dayTasks });
+    const userId = await getUserId();
+    if (!userId) return;
+
+    const { data } = await supabase
+      .from('daily_tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('date', date)
+      .order('created_at', { ascending: true });
+
+    if (data && data.length > 0) {
+      set({ dailyTasks: data });
     } else {
-      const newTasks = buildDefaultTasks(date);
-      saveJSON('fittrack_tasks', [...allTasks, ...newTasks]);
-      set({ dailyTasks: newTasks });
+      const workoutInfo = getWorkoutTitleForDate(date);
+      const now = new Date().toISOString();
+      const newTasks = [
+        ...(workoutInfo ? [{
+          user_id: userId, date, task_type: 'workout',
+          title: workoutInfo.title, subtitle: workoutInfo.subtitle,
+          completed: false, created_at: now,
+        }] : []),
+        { user_id: userId, date, task_type: 'steps', title: 'Meta de pasos', subtitle: '10.000 pasos', completed: false, created_at: now },
+        { user_id: userId, date, task_type: 'nutrition', title: 'Nutrición diaria', subtitle: '2.400 kcal · 180g proteína', completed: false, created_at: now },
+      ];
+      const { data: inserted } = await supabase.from('daily_tasks').insert(newTasks).select();
+      if (inserted) set({ dailyTasks: inserted });
     }
   },
 
   fetchWeightGoal: async () => {
-    set({ weightGoal: loadJSON<WeightGoal | null>('fittrack_goal', null) });
+    set({ weightGoal: null });
   },
 
   addBodyMetric: async (weight, date, notes = '') => {
-    const newMetric: BodyMetric = { id: `metric-${Date.now()}`, date, weight_kg: weight, notes, created_at: new Date().toISOString() };
-    const metrics = loadJSON<BodyMetric[]>('fittrack_metrics', []);
-    const updated = [...metrics, newMetric].sort((a, b) => a.date.localeCompare(b.date));
-    saveJSON('fittrack_metrics', updated);
-    set({ bodyMetrics: updated });
+    const userId = await getUserId();
+    if (!userId) return;
+    const { data } = await supabase
+      .from('body_metrics')
+      .insert({ user_id: userId, weight_kg: weight, date, notes })
+      .select()
+      .single();
+    if (data) {
+      set(state => ({
+        bodyMetrics: [...state.bodyMetrics, data].sort((a, b) => a.date.localeCompare(b.date)),
+      }));
+    }
   },
 
   toggleDailyTask: async (id) => {
-    const allTasks = loadJSON<DailyTask[]>('fittrack_tasks', []);
-    const updated = allTasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
-    saveJSON('fittrack_tasks', updated);
-    set(state => ({ dailyTasks: state.dailyTasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t) }));
+    const task = get().dailyTasks.find(t => t.id === id);
+    if (!task) return;
+    const newVal = !task.completed;
+    await supabase.from('daily_tasks').update({ completed: newVal }).eq('id', id);
+    set(state => ({ dailyTasks: state.dailyTasks.map(t => t.id === id ? { ...t, completed: newVal } : t) }));
   },
 
-  addCardioTask: (date, type, duration) => {
+  addCardioTask: async (date, type, duration) => {
+    const userId = await getUserId();
+    if (!userId) return;
     const now = new Date().toISOString();
-    const newTask: DailyTask = {
-      id: `${date}-cardio-${Date.now()}`,
-      date,
-      task_type: 'cardio',
-      title: `Cardio — ${type}`,
-      subtitle: `${duration} min`,
-      completed: false,
-      created_at: now,
+    const newTask = {
+      user_id: userId, date, task_type: 'cardio',
+      title: `Cardio — ${type}`, subtitle: `${duration} min`,
+      completed: false, created_at: now,
     };
-    const allTasks = loadJSON<DailyTask[]>('fittrack_tasks', []);
-    saveJSON('fittrack_tasks', [...allTasks, newTask]);
-    set(state => ({ dailyTasks: [...state.dailyTasks, newTask] }));
+    const { data } = await supabase.from('daily_tasks').insert(newTask).select().single();
+    if (data) set(state => ({ dailyTasks: [...state.dailyTasks, data] }));
   },
 
-  removeTask: (id) => {
-    const allTasks = loadJSON<DailyTask[]>('fittrack_tasks', []);
-    saveJSON('fittrack_tasks', allTasks.filter(t => t.id !== id));
+  removeTask: async (id) => {
+    await supabase.from('daily_tasks').delete().eq('id', id);
     set(state => ({ dailyTasks: state.dailyTasks.filter(t => t.id !== id) }));
+  },
+
+  saveWorkoutWeight: async (exerciseId, setNumber, weightKg, reps) => {
+    const userId = await getUserId();
+    if (!userId) return;
+    const date = new Date().toISOString().split('T')[0];
+    await supabase.from('workout_weights').upsert({
+      user_id: userId, exercise_id: exerciseId,
+      set_number: setNumber, weight_kg: weightKg, reps, date,
+    }, { onConflict: 'user_id,exercise_id,set_number' });
   },
 
   initWorkoutSets: (targetSets, targetReps) => {
     const sets: ActiveSetRow[] = Array.from({ length: targetSets }, (_, i) => ({
-      id: `set-${i + 1}`, setNumber: i + 1, targetReps, actualReps: '', weightKg: '', completed: false,
+      id: `set-${i + 1}`, setNumber: i + 1, targetReps,
+      actualReps: '', weightKg: '', completed: false,
     }));
     set({ activeWorkoutSets: sets });
   },

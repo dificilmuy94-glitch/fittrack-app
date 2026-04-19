@@ -1,6 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
 import { useAppStore } from '@/store/useAppStore';
 import { BottomNav } from '@/components/BottomNav';
+import { LoginScreen } from '@/screens/LoginScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { AgendaScreen } from '@/screens/AgendaScreen';
 import { EvolutionScreen } from '@/screens/EvolutionScreen';
@@ -12,6 +14,23 @@ const SCREENS_WITH_NAV = ['home', 'agenda', 'evolution', 'files'];
 
 export default function App() {
   const { activeScreen, darkMode, setDarkMode } = useAppStore();
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -25,6 +44,18 @@ export default function App() {
     if (darkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [darkMode]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-[#1A3A32] border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen onLogin={() => {}} />;
+  }
 
   const showNav = SCREENS_WITH_NAV.includes(activeScreen);
 

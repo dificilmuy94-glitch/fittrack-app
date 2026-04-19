@@ -1,27 +1,30 @@
-// Supabase is no longer used - types are now in useAppStore
-// This file is kept to avoid breaking any remaining imports
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = 'https://tdqaylfntqxchehdwnvs.supabase.co';
+const supabaseKey = 'sb_publishable_d87kp4-AhOiqTECB8ye8sw_Ia7jWD8I';
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
+
+export type Profile = {
+  id: string;
+  email: string;
+  name: string;
+  nutrition_plan: string;
+  created_at: string;
+};
 
 export type BodyMetric = {
   id: string;
+  user_id: string;
   date: string;
   weight_kg: number;
   notes: string;
   created_at: string;
 };
 
-export type Exercise = {
-  id: string;
-  name: string;
-  muscle_group: string;
-  description: string;
-  youtube_url: string;
-  sets_scheme: string;
-  image_url: string;
-  created_at: string;
-};
-
 export type DailyTask = {
   id: string;
+  user_id: string;
   date: string;
   task_type: string;
   title: string;
@@ -30,23 +33,13 @@ export type DailyTask = {
   created_at: string;
 };
 
-export type WeightGoal = {
+export type WorkoutWeight = {
   id: string;
-  initial_weight: number;
-  target_weight: number;
+  user_id: string;
+  exercise_id: string;
+  set_number: number;
+  weight_kg: string;
+  reps: string;
+  date: string;
   created_at: string;
 };
-
-// Dummy supabase client so old imports don't break
-export const supabase = {
-  from: () => ({
-    select: () => ({ data: null, error: null }),
-    insert: () => ({ select: () => ({ data: null, error: null }) }),
-    update: () => ({ eq: () => ({ data: null, error: null }) }),
-    eq: () => ({ order: () => ({ data: null, error: null }) }),
-    order: () => ({ data: null, error: null }),
-    limit: () => ({ maybeSingle: () => ({ data: null, error: null }) }),
-    maybeSingle: () => ({ data: null, error: null }),
-    single: () => ({ data: null, error: null }),
-  }),
-} as any;
