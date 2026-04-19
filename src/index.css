@@ -1,0 +1,132 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 6%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 6%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 6%;
+    --primary: 214 60% 15%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 162 38% 16%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 91%;
+    --input: 0 0% 91%;
+    --ring: 214 60% 15%;
+    --radius: 0.75rem;
+    --chart-1: 162 38% 16%;
+    --chart-2: 162 38% 30%;
+    --chart-3: 162 38% 45%;
+    --chart-4: 214 60% 15%;
+    --chart-5: 214 60% 30%;
+  }
+
+  .dark {
+    --background: 162 15% 5%;
+    --foreground: 0 0% 96%;
+    --card: 162 12% 8%;
+    --card-foreground: 0 0% 96%;
+    --popover: 162 12% 8%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 0 0% 96%;
+    --primary-foreground: 162 15% 5%;
+    --secondary: 162 10% 12%;
+    --secondary-foreground: 0 0% 80%;
+    --muted: 162 10% 12%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 162 38% 22%;
+    --accent-foreground: 0 0% 96%;
+    --destructive: 0 62% 40%;
+    --destructive-foreground: 0 0% 96%;
+    --border: 162 10% 14%;
+    --input: 162 10% 14%;
+    --ring: 162 38% 40%;
+    --chart-1: 162 45% 35%;
+    --chart-2: 162 38% 50%;
+    --chart-3: 162 30% 60%;
+    --chart-4: 214 50% 50%;
+    --chart-5: 214 40% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overscroll-behavior: none;
+  }
+
+  #root {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  button {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .gradient-green {
+    background: linear-gradient(135deg, #1A3A32 0%, #2D6A5B 100%);
+  }
+
+  .gradient-navy {
+    background: linear-gradient(135deg, #0F172A 0%, #1E3A5F 100%);
+  }
+
+  .touch-target {
+    min-height: 44px;
+  }
+
+  .min-h-dvh {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
