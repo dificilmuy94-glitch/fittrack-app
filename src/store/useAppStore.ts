@@ -4,6 +4,14 @@ import { WEEKLY_PLAN } from '@/data/weeklyPlan';
 
 export type Screen = 'home' | 'agenda' | 'evolution' | 'files' | 'workout-logger' | 'exercise-list';
 
+export type Profile = {
+  id: string;
+  email: string;
+  name: string;
+  has_workout: boolean;
+  has_nutrition: boolean;
+};
+
 export type BodyMetric = {
   id: string;
   user_id?: string;
@@ -40,8 +48,6 @@ export type ActiveSetRow = {
   completed: boolean;
 };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function getWorkoutTitleForDate(dateStr: string): { title: string; subtitle: string } | null {
   const d = new Date(dateStr + 'T12:00:00');
   const day = d.getDay();
@@ -59,11 +65,10 @@ async function getUserId(): Promise<string | null> {
   return session?.user?.id ?? null;
 }
 
-// ─── Store ────────────────────────────────────────────────────────────────────
-
 type AppState = {
   activeScreen: Screen;
   darkMode: boolean;
+  profile: Profile | null;
   bodyMetrics: BodyMetric[];
   dailyTasks: DailyTask[];
   weightGoal: WeightGoal | null;
@@ -80,6 +85,7 @@ type AppState = {
   setDarkMode: (val: boolean) => void;
   setSelectedDate: (date: string) => void;
   setWorkoutDay: (dayKey: string, mode?: 'preview' | 'active') => void;
+  fetchProfile: () => Promise<void>;
   fetchBodyMetrics: () => Promise<void>;
   fetchDailyTasks: (date: string) => Promise<void>;
   fetchWeightGoal: () => Promise<void>;
@@ -87,7 +93,6 @@ type AppState = {
   toggleDailyTask: (id: string) => Promise<void>;
   addCardioTask: (date: string, type: string, duration: string) => void;
   removeTask: (id: string) => void;
-  saveWorkoutWeight: (exerciseId: string, setNumber: number, weightKg: string, reps: string) => Promise<void>;
   initWorkoutSets: (targetSets: number, targetReps: number) => void;
   updateSetField: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
   toggleSetComplete: (id: string) => void;
@@ -110,6 +115,7 @@ const getInitialDarkMode = () => {
 export const useAppStore = create<AppState>((set, get) => ({
   activeScreen: 'home',
   darkMode: getInitialDarkMode(),
+  profile: null,
   bodyMetrics: [],
   dailyTasks: [],
   weightGoal: null,
@@ -139,6 +145,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setWorkoutDay: (dayKey, mode = 'preview') => set({ activeWorkoutDayKey: dayKey, activeWorkoutMode: mode }),
 
+  fetchProfile: async () => {
+    const userId = await getUserId();
+    if (!userId) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (data) set({ profile: data });
+  },
+
   fetchBodyMetrics: async () => {
     const userId = await getUserId();
     if (!userId) return;
@@ -153,6 +170,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchDailyTasks: async (date: string) => {
     const userId = await getUserId();
     if (!userId) return;
+    const profile = get().profile;
 
     const { data } = await supabase
       .from('daily_tasks')
@@ -164,25 +182,47 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (data && data.length > 0) {
       set({ dailyTasks: data });
     } else {
-      const workoutInfo = getWorkoutTitleForDate(date);
       const now = new Date().toISOString();
-      const newTasks = [
-        ...(workoutInfo ? [{
-          user_id: userId, date, task_type: 'workout',
-          title: workoutInfo.title, subtitle: workoutInfo.subtitle,
+      const newTasks = [];
+
+      // Solo añade workout si el usuario tiene has_workout = true
+      if (profile?.has_workout !== false) {
+        const workoutInfo = getWorkoutTitleForDate(date);
+        if (workoutInfo) {
+          newTasks.push({
+            user_id: userId, date, task_type: 'workout',
+            title: workoutInfo.title, subtitle: workoutInfo.subtitle,
+            completed: false, created_at: now,
+          });
+        }
+      }
+
+      // Siempre añade pasos
+      newTasks.push({
+        user_id: userId, date, task_type: 'steps',
+        title: 'Meta de pasos', subtitle: '10.000 pasos',
+        completed: false, created_at: now,
+      });
+
+      // Solo añade nutrición si has_nutrition = true
+      if (profile?.has_nutrition !== false) {
+        newTasks.push({
+          user_id: userId, date, task_type: 'nutrition',
+          title: 'Nutrición diaria', subtitle: '2.400 kcal · 180g proteína',
           completed: false, created_at: now,
-        }] : []),
-        { user_id: userId, date, task_type: 'steps', title: 'Meta de pasos', subtitle: '10.000 pasos', completed: false, created_at: now },
-        { user_id: userId, date, task_type: 'nutrition', title: 'Nutrición diaria', subtitle: '2.400 kcal · 180g proteína', completed: false, created_at: now },
-      ];
-      const { data: inserted } = await supabase.from('daily_tasks').insert(newTasks).select();
-      if (inserted) set({ dailyTasks: inserted });
+        });
+      }
+
+      if (newTasks.length > 0) {
+        const { data: inserted } = await supabase.from('daily_tasks').insert(newTasks).select();
+        if (inserted) set({ dailyTasks: inserted });
+      } else {
+        set({ dailyTasks: [] });
+      }
     }
   },
 
-  fetchWeightGoal: async () => {
-    set({ weightGoal: null });
-  },
+  fetchWeightGoal: async () => { set({ weightGoal: null }); },
 
   addBodyMetric: async (weight, date, notes = '') => {
     const userId = await getUserId();
@@ -190,8 +230,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { data } = await supabase
       .from('body_metrics')
       .insert({ user_id: userId, weight_kg: weight, date, notes })
-      .select()
-      .single();
+      .select().single();
     if (data) {
       set(state => ({
         bodyMetrics: [...state.bodyMetrics, data].sort((a, b) => a.date.localeCompare(b.date)),
@@ -211,28 +250,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     const userId = await getUserId();
     if (!userId) return;
     const now = new Date().toISOString();
-    const newTask = {
+    const { data } = await supabase.from('daily_tasks').insert({
       user_id: userId, date, task_type: 'cardio',
       title: `Cardio — ${type}`, subtitle: `${duration} min`,
       completed: false, created_at: now,
-    };
-    const { data } = await supabase.from('daily_tasks').insert(newTask).select().single();
+    }).select().single();
     if (data) set(state => ({ dailyTasks: [...state.dailyTasks, data] }));
   },
 
   removeTask: async (id) => {
     await supabase.from('daily_tasks').delete().eq('id', id);
     set(state => ({ dailyTasks: state.dailyTasks.filter(t => t.id !== id) }));
-  },
-
-  saveWorkoutWeight: async (exerciseId, setNumber, weightKg, reps) => {
-    const userId = await getUserId();
-    if (!userId) return;
-    const date = new Date().toISOString().split('T')[0];
-    await supabase.from('workout_weights').upsert({
-      user_id: userId, exercise_id: exerciseId,
-      set_number: setNumber, weight_kg: weightKg, reps, date,
-    }, { onConflict: 'user_id,exercise_id,set_number' });
   },
 
   initWorkoutSets: (targetSets, targetReps) => {

@@ -13,20 +13,20 @@ import { ExerciseListScreen } from '@/screens/ExerciseListScreen';
 const SCREENS_WITH_NAV = ['home', 'agenda', 'evolution', 'files'];
 
 export default function App() {
-  const { activeScreen, darkMode, setDarkMode } = useAppStore();
+  const { activeScreen, darkMode, setDarkMode, fetchProfile } = useAppStore();
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
+      if (session) await fetchProfile();
       setLoading(false);
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
+      if (session) await fetchProfile();
     });
 
     return () => subscription.unsubscribe();
