@@ -132,7 +132,6 @@ function DaySelector({ selectedDay, onSelect }: { selectedDay: string; onSelect:
 function ExercisePreviewCard({ exercise, index, isActive, onClick }: {
   exercise: Exercise; index: number; isActive: boolean; onClick: () => void;
 }) {
-  const dayPlan = WEEKLY_PLAN.find(d => d.exercises.includes(exercise))!;
   return (
     <button
       onClick={onClick}

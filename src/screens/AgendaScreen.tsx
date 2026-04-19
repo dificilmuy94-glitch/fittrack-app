@@ -274,11 +274,6 @@ export function AgendaScreen() {
   const dayKey       = getDayKeyForDate(selectedDate);
   const dayPlan      = dayKey ? WEEKLY_PLAN.find(d => d.dayKey === dayKey) : null;
 
-  function navigateToWorkout(mode: 'active' | 'preview') {
-    if (dayKey) setWorkoutDay(dayKey);
-    setActiveScreen(mode === 'active' ? 'workout-logger' : 'workout-preview');
-  }
-
   return (
     <>
       {showNutritionModal && <NutritionModal onClose={() => setShowNutritionModal(false)} />}
