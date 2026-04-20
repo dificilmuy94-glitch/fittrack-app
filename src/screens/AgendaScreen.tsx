@@ -331,12 +331,10 @@ export function AgendaScreen() {
         <div className="px-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground">Tareas del día</h2>
-            {!hasCardio && (
-              <button onClick={() => setShowCardioModal(true)}
+<button onClick={() => setShowCardioModal(true)}
                 className="flex items-center gap-1.5 text-xs font-semibold text-red-500 px-2.5 py-1.5 bg-red-500/10 rounded-lg">
                 <Plus size={12} /> Añadir cardio
               </button>
-            )}
           </div>
 
           <div className="flex flex-col gap-3">
