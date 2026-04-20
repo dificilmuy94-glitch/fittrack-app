@@ -180,7 +180,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       .order('created_at', { ascending: true });
 
     if (data && data.length > 0) {
-      set({ dailyTasks: data });
+      // Deduplicate — keep only one task per task_type
+      const seen = new Set<string>();
+      const unique = data.filter(t => {
+        if (seen.has(t.task_type)) return false;
+        seen.add(t.task_type);
+        return true;
+      });
+      set({ dailyTasks: unique });
     } else {
       const now = new Date().toISOString();
       const newTasks = [];
