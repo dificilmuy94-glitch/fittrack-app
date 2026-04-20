@@ -270,7 +270,6 @@ export function AgendaScreen() {
   const today        = dateToISO(new Date());
   const completedCount = dailyTasks.filter(t => t.completed).length;
   const totalCount   = dailyTasks.length;
-  const hasCardio    = dailyTasks.some(t => t.task_type === 'cardio');
   const dayKey       = getDayKeyForDate(selectedDate);
   const dayPlan      = dayKey ? WEEKLY_PLAN.find(d => d.dayKey === dayKey) : null;
 
