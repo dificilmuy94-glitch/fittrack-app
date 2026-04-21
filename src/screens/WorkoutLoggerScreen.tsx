@@ -348,12 +348,13 @@ export function WorkoutLoggerScreen() {
               ))}
             </div>
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="relative bg-black aspect-video">
-                <iframe width="100%" height="100%"
-                  src={`https://www.youtube.com/embed/${exercise.youtubeId}?autoplay=0&rel=0&modestbranding=1`}
-                  title={exercise.name} frameBorder="0"
-                  allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen className="w-full h-full" />
+              <div className="relative bg-muted aspect-video overflow-hidden rounded-none">
+                <img
+                  src={exercise.imageUrl}
+                  alt={exercise.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`; }}
+                />
               </div>
               <div className="p-4 flex flex-col gap-3">
                 <div>
@@ -389,13 +390,14 @@ export function WorkoutLoggerScreen() {
         {/* ── ACTIVE MODE ── */}
         {mode === 'active' && (
           <>
-            <div className="relative bg-black aspect-video">
-              <iframe width="100%" height="100%"
-                src={`https://www.youtube.com/embed/${exercise.youtubeId}?autoplay=0&rel=0&modestbranding=1`}
-                title={exercise.name} frameBorder="0"
-                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen className="w-full h-full" />
-            </div>
+            <div className="relative bg-muted aspect-video overflow-hidden rounded-none">
+                <img
+                  src={exercise.imageUrl}
+                  alt={exercise.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`; }}
+                />
+              </div>
 
             <div className="px-4 py-4 flex flex-col gap-4">
               <div>
