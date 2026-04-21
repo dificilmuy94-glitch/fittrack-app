@@ -104,7 +104,7 @@ function AddWeightModal({ onClose, onAdd }: { onClose: () => void; onAdd: (w: nu
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg bg-background rounded-t-2xl p-6 border-t border-x border-border" onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-lg bg-background rounded-t-2xl p-6 pb-32 border-t border-x border-border" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 bg-border rounded-full mx-auto mb-5" />
         <h3 className="text-lg font-bold mb-4">Registrar peso</h3>
         <div className="flex flex-col gap-4">
@@ -157,7 +157,7 @@ function AddMeasurementsModal({ onClose, onAdd }: { onClose: () => void; onAdd: 
           </div>
         </div>
 
-        <div className="overflow-y-auto px-6 pb-6 flex flex-col gap-3">
+        <div className="overflow-y-auto px-6 pb-32 flex flex-col gap-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Fecha</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
