@@ -3,7 +3,7 @@ import { ArrowLeft, Check, ChevronDown, ChevronUp, Pause, Info, History, Play, E
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 import { WEEKLY_PLAN, Exercise } from '@/data/weeklyPlan';
-import { MuscleImage } from '@/components/MuscleImage';
+
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 const STORAGE_KEY = 'workout_weights_v1';
@@ -349,11 +349,14 @@ export function WorkoutLoggerScreen() {
               ))}
             </div>
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <MuscleImage
-                primaryMuscles={exercise.primaryMuscles}
-                secondaryMuscles={exercise.secondaryMuscles}
-                className="aspect-video w-full bg-muted"
-              />
+              <div className="aspect-video w-full bg-muted overflow-hidden">
+                <img
+                  src={exercise.imageUrl}
+                  alt={exercise.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${exercise.youtubeId}/maxresdefault.jpg`; }}
+                />
+              </div>
               <div className="p-4 flex flex-col gap-3">
                 <div>
                   <p className={cn('text-xs font-medium', dayPlan.color)}>{exercise.muscleGroup}</p>
@@ -388,11 +391,14 @@ export function WorkoutLoggerScreen() {
         {/* ── ACTIVE MODE ── */}
         {mode === 'active' && (
           <>
-            <MuscleImage
-              primaryMuscles={exercise.primaryMuscles}
-              secondaryMuscles={exercise.secondaryMuscles}
-              className="aspect-video w-full bg-muted"
-            />
+            <div className="aspect-video w-full bg-muted overflow-hidden">
+              <img
+                src={exercise.imageUrl}
+                alt={exercise.name}
+                className="w-full h-full object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${exercise.youtubeId}/maxresdefault.jpg`; }}
+              />
+            </div>
 
             <div className="px-4 py-4 flex flex-col gap-4">
               <div>
