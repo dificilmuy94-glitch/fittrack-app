@@ -354,7 +354,11 @@ export function WorkoutLoggerScreen() {
                   src={exercise.imageUrl}
                   alt={exercise.name}
                   className="w-full h-full object-cover"
-                  onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${exercise.youtubeId}/maxresdefault.jpg`; }}
+                  onError={(e) => { 
+                    const t = e.target as HTMLImageElement;
+                    t.onerror = null;
+                    t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`;
+                  }}
                 />
               </div>
               <div className="p-4 flex flex-col gap-3">
@@ -396,7 +400,11 @@ export function WorkoutLoggerScreen() {
                 src={exercise.imageUrl}
                 alt={exercise.name}
                 className="w-full h-full object-cover"
-                onError={(e) => { (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${exercise.youtubeId}/maxresdefault.jpg`; }}
+                onError={(e) => { 
+                    const t = e.target as HTMLImageElement;
+                    t.onerror = null;
+                    t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`;
+                  }}
               />
             </div>
 

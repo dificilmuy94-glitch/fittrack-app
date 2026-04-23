@@ -9,8 +9,9 @@ import { EvolutionScreen } from '@/screens/EvolutionScreen';
 import { FilesScreen } from '@/screens/FilesScreen';
 import { WorkoutLoggerScreen } from '@/screens/WorkoutLoggerScreen';
 import { ExerciseListScreen } from '@/screens/ExerciseListScreen';
+import { ProfileScreen } from '@/screens/ProfileScreen';
 
-const SCREENS_WITH_NAV = ['home', 'agenda', 'evolution', 'files'];
+const SCREENS_WITH_NAV = ['home', 'agenda', 'evolution', 'files', 'profile'];
 
 export default function App() {
   const { activeScreen, darkMode, setDarkMode, fetchProfile } = useAppStore();
@@ -18,9 +19,18 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Safety timeout — never stay stuck loading more than 5s
+    const timeout = setTimeout(() => setLoading(false), 5000);
+
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
-      if (session) await fetchProfile();
+      if (session) {
+        try { await fetchProfile(); } catch (_) {}
+      }
+      clearTimeout(timeout);
+      setLoading(false);
+    }).catch(() => {
+      clearTimeout(timeout);
       setLoading(false);
     });
 
@@ -67,6 +77,7 @@ export default function App() {
       case 'files':          return <FilesScreen />;
       case 'workout-logger': return <WorkoutLoggerScreen />;
       case 'exercise-list':  return <ExerciseListScreen />;
+      case 'profile':        return <ProfileScreen />;
       default:               return <HomeScreen />;
     }
   };
