@@ -1,9 +1,8 @@
-import { useEffect, useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Check, ChevronDown, ChevronUp, Pause, Info, History, Play, Eye, GripHorizontal } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 import { WEEKLY_PLAN, Exercise } from '@/data/weeklyPlan';
-
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
 const STORAGE_KEY = 'workout_weights_v1';
@@ -26,7 +25,7 @@ function getLastWeight(exerciseId: string, setNumber: number): SavedWeight | nul
   return loadSavedWeights()[`${exerciseId}_set${setNumber}`] ?? null;
 }
 
-// ─── Timer persistence (survives page hidden) ─────────────────────────────────
+// ─── Timer persistence ────────────────────────────────────────────────────────
 function saveTimerState(endTime: number | null) {
   if (endTime === null) localStorage.removeItem(TIMER_KEY);
   else localStorage.setItem(TIMER_KEY, String(endTime));
@@ -34,6 +33,25 @@ function saveTimerState(endTime: number | null) {
 function loadTimerEndTime(): number | null {
   const v = localStorage.getItem(TIMER_KEY);
   return v ? Number(v) : null;
+}
+
+// ─── Superset detection ───────────────────────────────────────────────────────
+function getSupersetLabel(name: string): { group: string; order: number } | null {
+  const m = name.match(/\(([A-Z])(\d)\)/);
+  return m ? { group: m[1], order: parseInt(m[2]) } : null;
+}
+function cleanName(name: string) {
+  return name.replace(/\s*\([A-Z]\d\)\s*/g, '').trim();
+}
+
+// ─── Local set state ──────────────────────────────────────────────────────────
+type SetState = { id: string; setNumber: number; targetReps: number; actualReps: string; weightKg: string; completed: boolean };
+
+function buildSets(targetSets: number, targetReps: number, prefix: string): SetState[] {
+  return Array.from({ length: targetSets }, (_, i) => ({
+    id: `${prefix}_s${i + 1}`, setNumber: i + 1, targetReps,
+    actualReps: '', weightKg: '', completed: false,
+  }));
 }
 
 // ─── Draggable Rest Timer ─────────────────────────────────────────────────────
@@ -75,7 +93,6 @@ function RestTimerOverlay({ seconds, total, onStop }: { seconds: number; total: 
       style={{ transform: `translate(calc(-50% + ${pos.x}px), ${pos.y}px)` }}
       className="fixed bottom-28 left-1/2 z-50 bg-background border border-border rounded-2xl shadow-xl p-4 flex items-center gap-4 min-w-[240px] cursor-grab active:cursor-grabbing select-none"
     >
-      {/* Drag handle */}
       <div
         className="absolute top-2 left-1/2 -translate-x-1/2 text-muted-foreground/40 cursor-grab"
         onMouseDown={onMouseDown}
@@ -83,25 +100,19 @@ function RestTimerOverlay({ seconds, total, onStop }: { seconds: number; total: 
       >
         <GripHorizontal size={14} />
       </div>
-
-      <div className="relative w-16 h-16 flex-shrink-0 mt-1">
-        <svg width="64" height="64" className="-rotate-90">
-          <circle cx="32" cy="32" r="28" fill="none" stroke="hsl(var(--border))" strokeWidth="4" />
-          <circle cx="32" cy="32" r="28" fill="none" stroke="#1A3A32" strokeWidth="4" strokeLinecap="round"
-            strokeDasharray={`${circumference}`}
-            strokeDashoffset={`${circumference * (1 - pct)}`}
-            className="transition-all duration-1000 dark:stroke-emerald-400" />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-sm font-bold text-foreground">{seconds}s</span>
-        </div>
-      </div>
-
-      <div className="flex-1">
+      <svg width="64" height="64" className="flex-shrink-0 -rotate-90">
+        <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="4" className="text-muted" />
+        <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="4"
+          strokeDasharray={circumference} strokeDashoffset={circumference * (1 - pct)}
+          strokeLinecap="round" className="text-[#1A3A32] dark:text-emerald-400 transition-all duration-1000" />
+        <text x="32" y="36" textAnchor="middle" className="fill-foreground text-sm font-bold" style={{ fontSize: 14, fontWeight: 700 }} transform="rotate(90, 32, 32)">
+          {seconds}s
+        </text>
+      </svg>
+      <div className="flex flex-col min-w-0">
         <p className="text-xs text-muted-foreground">Descanso</p>
         <p className="text-sm font-semibold text-foreground">Próxima serie</p>
       </div>
-
       <button onClick={onStop} className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
         <Pause size={14} className="text-muted-foreground" />
       </button>
@@ -109,15 +120,12 @@ function RestTimerOverlay({ seconds, total, onStop }: { seconds: number; total: 
   );
 }
 
-// ─── Set Row ──────────────────────────────────────────────────────────────────
-type SetRowProps = {
-  row: { id: string; setNumber: number; targetReps: number; actualReps: string; weightKg: string; completed: boolean };
-  exerciseId: string;
+// ─── Single Set Row ───────────────────────────────────────────────────────────
+function SetRow({ row, exerciseId, onUpdate, onToggle }: {
+  row: SetState; exerciseId: string;
   onUpdate: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
   onToggle: (id: string) => void;
-};
-
-function SetRow({ row, exerciseId, onUpdate, onToggle }: SetRowProps) {
+}) {
   const last = getLastWeight(exerciseId, row.setNumber);
   return (
     <div className={cn('flex flex-col gap-2 py-3 px-3 rounded-xl transition-all duration-200',
@@ -158,6 +166,112 @@ function SetRow({ row, exerciseId, onUpdate, onToggle }: SetRowProps) {
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Superset Row (two exercises side by side per round) ─────────────────────
+function SupersetSetRow({ setNum, ex1, ex2, row1, row2, onUpdate1, onUpdate2, onToggle1, onToggle2 }: {
+  setNum: number;
+  ex1: Exercise; ex2: Exercise;
+  row1: SetState; row2: SetState;
+  onUpdate1: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
+  onUpdate2: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
+  onToggle1: (id: string) => void;
+  onToggle2: (id: string) => void;
+}) {
+  const last1 = getLastWeight(ex1.id, setNum);
+  const last2 = getLastWeight(ex2.id, setNum);
+  const bothDone = row1.completed && row2.completed;
+
+  return (
+    <div className={cn('rounded-2xl border-2 overflow-hidden transition-all duration-200',
+      bothDone ? 'border-[#1A3A32]/40 dark:border-emerald-400/40' : 'border-border')}>
+      {/* Round header */}
+      <div className={cn('flex items-center justify-between px-3 py-2 border-b border-border/50',
+        bothDone ? 'bg-[#1A3A32]/8 dark:bg-emerald-400/8' : 'bg-muted/60')}>
+        <span className={cn('text-xs font-bold', bothDone ? 'text-[#1A3A32] dark:text-emerald-400' : 'text-muted-foreground')}>
+          Ronda {setNum}
+        </span>
+        {bothDone && <Check size={12} className="text-[#1A3A32] dark:text-emerald-400" strokeWidth={3} />}
+      </div>
+
+      {/* Two columns */}
+      <div className="grid grid-cols-2 divide-x divide-border/50">
+        {/* Exercise 1 */}
+        <div className="flex flex-col gap-2 p-3">
+          <p className="text-[10px] font-bold text-[#1A3A32] dark:text-emerald-400 leading-tight">
+            {cleanName(ex1.name)}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="flex flex-col items-center">
+              <span className="text-[9px] text-muted-foreground mb-0.5">REPS</span>
+              <input type="number" inputMode="numeric" value={row1.actualReps}
+                onChange={e => onUpdate1(row1.id, 'actualReps', e.target.value)}
+                placeholder={String(row1.targetReps)}
+                className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30',
+                  row1.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30' : 'border-border')} />
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-[9px] text-muted-foreground mb-0.5">KG</span>
+              <input type="number" inputMode="decimal" value={row1.weightKg}
+                onChange={e => onUpdate1(row1.id, 'weightKg', e.target.value)}
+                placeholder={last1 ? last1.weightKg : '—'} step="0.5"
+                className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30',
+                  row1.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30' : 'border-border')} />
+            </div>
+          </div>
+          {last1 && (
+            <p className="text-[9px] text-muted-foreground text-center">
+              Ant: <span className="font-semibold">{last1.weightKg}kg×{last1.reps}</span>
+            </p>
+          )}
+          <button onClick={() => onToggle1(row1.id)}
+            className={cn('w-full h-8 rounded-lg border-2 flex items-center justify-center gap-1 text-[11px] font-semibold transition-all',
+              row1.completed
+                ? 'bg-[#1A3A32] dark:bg-emerald-500 border-[#1A3A32] dark:border-emerald-500 text-white'
+                : 'border-border text-muted-foreground')}>
+            {row1.completed ? <><Check size={11} strokeWidth={3} /> OK</> : 'Listo'}
+          </button>
+        </div>
+
+        {/* Exercise 2 */}
+        <div className="flex flex-col gap-2 p-3">
+          <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400 leading-tight">
+            {cleanName(ex2.name)}
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="flex flex-col items-center">
+              <span className="text-[9px] text-muted-foreground mb-0.5">REPS</span>
+              <input type="number" inputMode="numeric" value={row2.actualReps}
+                onChange={e => onUpdate2(row2.id, 'actualReps', e.target.value)}
+                placeholder={String(row2.targetReps)}
+                className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400/30',
+                  row2.completed ? 'border-purple-400/30' : 'border-border')} />
+            </div>
+            <div className="flex flex-col items-center">
+              <span className="text-[9px] text-muted-foreground mb-0.5">KG</span>
+              <input type="number" inputMode="decimal" value={row2.weightKg}
+                onChange={e => onUpdate2(row2.id, 'weightKg', e.target.value)}
+                placeholder={last2 ? last2.weightKg : '—'} step="0.5"
+                className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400/30',
+                  row2.completed ? 'border-purple-400/30' : 'border-border')} />
+            </div>
+          </div>
+          {last2 && (
+            <p className="text-[9px] text-muted-foreground text-center">
+              Ant: <span className="font-semibold">{last2.weightKg}kg×{last2.reps}</span>
+            </p>
+          )}
+          <button onClick={() => onToggle2(row2.id)}
+            className={cn('w-full h-8 rounded-lg border-2 flex items-center justify-center gap-1 text-[11px] font-semibold transition-all',
+              row2.completed
+                ? 'bg-purple-600 dark:bg-purple-500 border-purple-600 dark:border-purple-500 text-white'
+                : 'border-border text-muted-foreground')}>
+            {row2.completed ? <><Check size={11} strokeWidth={3} /> OK</> : 'Listo'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -210,8 +324,7 @@ function ExercisePreviewCard({ exercise, index, isActive, onClick }: {
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export function WorkoutLoggerScreen() {
-  const { setActiveScreen, activeWorkoutSets, activeWorkoutDayKey, activeWorkoutMode,
-    initWorkoutSets, updateSetField, toggleSetComplete,
+  const { setActiveScreen, activeWorkoutDayKey, activeWorkoutMode,
     restTimer, restTimerActive, restTimerTotal, startRestTimer, tickRestTimer, stopRestTimer } = useAppStore();
 
   const [selectedDayKey, setSelectedDayKey] = useState(activeWorkoutDayKey || (() => {
@@ -222,6 +335,10 @@ export function WorkoutLoggerScreen() {
 
   const [mode, setMode] = useState<'preview' | 'active'>(activeWorkoutMode || 'preview');
   const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
+
+  // Local sets state — keyed by exercise id
+  const [setsMap, setSetsMap] = useState<Record<string, SetState[]>>({});
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const dayPlan  = WEEKLY_PLAN.find(d => d.dayKey === selectedDayKey)!;
@@ -230,32 +347,72 @@ export function WorkoutLoggerScreen() {
     ? dayPlan.exercises[activeExerciseIdx + 1]
     : null;
 
-  // Restore timer from localStorage when page becomes visible again
+  // Detect if current exercise is part of a superset
+  const superLabel = getSupersetLabel(exercise.name);
+  const isSuperset = !!superLabel;
+
+  // Find paired exercise for superset
+  const pairedExercise: Exercise | null = (() => {
+    if (!superLabel) return null;
+    const pairedOrder = superLabel.order === 1 ? 2 : 1;
+    return dayPlan.exercises.find(e => {
+      const sl = getSupersetLabel(e.name);
+      return sl?.group === superLabel.group && sl?.order === pairedOrder;
+    }) ?? null;
+  })();
+
+  // Always show the "first" exercise of the pair (order=1) so UI is consistent
+  const ex1 = (superLabel && superLabel.order === 1) ? exercise : (pairedExercise ?? exercise);
+  const ex2 = (superLabel && superLabel.order === 1) ? (pairedExercise ?? exercise) : exercise;
+
+  // When navigating to a superset exercise that is order=2, jump to order=1 instead
+  useEffect(() => {
+    if (mode === 'active' && superLabel && superLabel.order === 2 && pairedExercise) {
+      const pairIdx = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id);
+      if (pairIdx !== -1 && pairIdx !== activeExerciseIdx) {
+        setActiveExerciseIdx(pairIdx);
+      }
+    }
+  }, [activeExerciseIdx]);
+
+  // Init sets for current exercise(s)
+  useEffect(() => {
+    if (mode !== 'active') return;
+    setSetsMap(prev => {
+      const next = { ...prev };
+      if (!next[exercise.id]) {
+        next[exercise.id] = buildSets(exercise.targetSets, exercise.targetReps, exercise.id);
+      }
+      if (pairedExercise && !next[pairedExercise.id]) {
+        next[pairedExercise.id] = buildSets(pairedExercise.targetSets, pairedExercise.targetReps, pairedExercise.id);
+      }
+      return next;
+    });
+  }, [activeExerciseIdx, mode, selectedDayKey]);
+
+  // Reset all when day changes
+  useEffect(() => {
+    setActiveExerciseIdx(0);
+    setMode('preview');
+    setSetsMap({});
+  }, [selectedDayKey]);
+
+  // Timer
   useEffect(() => {
     function onVisible() {
       if (document.visibilityState === 'visible') {
         const endTime = loadTimerEndTime();
         if (endTime) {
           const remaining = Math.round((endTime - Date.now()) / 1000);
-          if (remaining > 0) {
-            startRestTimer(remaining);
-          } else {
-            saveTimerState(null);
-            stopRestTimer();
-          }
+          if (remaining > 0) startRestTimer(remaining);
+          else { saveTimerState(null); stopRestTimer(); }
         }
       }
     }
     document.addEventListener('visibilitychange', onVisible);
-    // Also check on mount
     onVisible();
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
-
-  useEffect(() => { setActiveExerciseIdx(0); setMode('preview'); }, [selectedDayKey]);
-  useEffect(() => {
-    if (mode === 'active') initWorkoutSets(exercise.targetSets, exercise.targetReps);
-  }, [activeExerciseIdx, selectedDayKey, mode]);
 
   useEffect(() => {
     if (restTimerActive) {
@@ -267,40 +424,86 @@ export function WorkoutLoggerScreen() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [restTimerActive, tickRestTimer]);
 
-  const completedSets = activeWorkoutSets.filter(s => s.completed).length;
+  // Current sets
+  const sets1 = setsMap[ex1.id] ?? [];
+  const sets2 = pairedExercise ? (setsMap[ex2.id] ?? []) : [];
+  const allSets = isSuperset ? [...sets1, ...sets2] : sets1;
+  const completedSets = allSets.filter(s => s.completed).length;
 
-  function handleToggleSet(id: string) {
-    const row = activeWorkoutSets.find(s => s.id === id);
-    if (row) {
-      toggleSetComplete(id);
+  function updateSet(exId: string, id: string, field: 'actualReps' | 'weightKg', value: string) {
+    setSetsMap(prev => ({
+      ...prev,
+      [exId]: (prev[exId] ?? []).map(s => s.id === id ? { ...s, [field]: value } : s),
+    }));
+  }
+
+  function toggleSet(exId: string, id: string, restSecs: number) {
+    setSetsMap(prev => {
+      const rows = prev[exId] ?? [];
+      const row = rows.find(s => s.id === id);
+      if (!row) return prev;
       if (row.weightKg || row.actualReps) {
-        saveWeight(exercise.id, row.setNumber, row.weightKg, row.actualReps || String(exercise.targetReps));
+        saveWeight(exId, row.setNumber, row.weightKg, row.actualReps || String(row.targetReps));
       }
-      // Save end time to localStorage so timer survives tab switch
-      const endTime = Date.now() + exercise.restSeconds * 1000;
+      const endTime = Date.now() + restSecs * 1000;
       saveTimerState(endTime);
-      startRestTimer(exercise.restSeconds);
-    }
+      startRestTimer(restSecs);
+      return { ...prev, [exId]: rows.map(s => s.id === id ? { ...s, completed: !s.completed } : s) };
+    });
   }
 
-  function handleStopTimer() {
-    saveTimerState(null);
-    stopRestTimer();
-  }
+  function handleStopTimer() { saveTimerState(null); stopRestTimer(); }
 
   function startRoutine(idx = 0) {
     setActiveExerciseIdx(idx);
     setMode('active');
-    initWorkoutSets(dayPlan.exercises[idx].targetSets, dayPlan.exercises[idx].targetReps);
+    setSetsMap({});
   }
 
   function goToExercise(idx: number) {
+    const target = dayPlan.exercises[idx];
+    const tLabel = getSupersetLabel(target.name);
+    // If navigating to order=2 of a superset, find order=1 instead
+    if (tLabel && tLabel.order === 2) {
+      const pairIdx = dayPlan.exercises.findIndex(e => {
+        const sl = getSupersetLabel(e.name);
+        return sl?.group === tLabel.group && sl?.order === 1;
+      });
+      if (pairIdx !== -1) { setActiveExerciseIdx(pairIdx); return; }
+    }
     setActiveExerciseIdx(idx);
-    initWorkoutSets(dayPlan.exercises[idx].targetSets, dayPlan.exercises[idx].targetReps);
   }
 
+  // For navigation: next exercise skips the paired one
+  function goNext() {
+    let next = activeExerciseIdx + 1;
+    if (pairedExercise) {
+      const pairIdx = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id);
+      if (pairIdx === next) next++;
+    }
+    if (next < dayPlan.exercises.length) goToExercise(next);
+  }
+  function goPrev() {
+    let prev = activeExerciseIdx - 1;
+    // If prev is order=2, skip it
+    if (prev >= 0) {
+      const prevEx = dayPlan.exercises[prev];
+      const pl = getSupersetLabel(prevEx.name);
+      if (pl && pl.order === 2) prev--;
+    }
+    if (prev >= 0) goToExercise(prev);
+  }
+
+  const isLastExercise = (() => {
+    let next = activeExerciseIdx + 1;
+    if (pairedExercise) {
+      const pairIdx = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id);
+      if (pairIdx === next) next++;
+    }
+    return next >= dayPlan.exercises.length;
+  })();
+
   return (
-    // ── FIX 2: pb-24 ensures content is never hidden behind bottom nav ──
     <div className="flex flex-col min-h-0">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background border-b border-border px-4 py-3 flex items-center gap-3">
@@ -318,71 +521,55 @@ export function WorkoutLoggerScreen() {
           </div>
         )}
         {mode === 'preview' && (
-          <button onClick={() => startRoutine(0)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1A3A32] dark:bg-emerald-500 text-white text-xs font-semibold rounded-xl">
-            <Play size={11} className="fill-current" /> Empezar
-          </button>
+          <DaySelector selectedDay={selectedDayKey} onSelect={k => setSelectedDayKey(k)} />
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-36">
-        {/* Day selector */}
-        <div className="px-4 pt-4 pb-2">
-          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Día de entrenamiento</p>
-          <DaySelector selectedDay={selectedDayKey} onSelect={setSelectedDayKey} />
-        </div>
-
-        {/* Muscle group badge */}
-        <div className={cn('mx-4 mb-3 rounded-xl px-3 py-2 flex items-center gap-2', dayPlan.colorBg)}>
-          <span className={cn('text-xs font-bold', dayPlan.color)}>{dayPlan.dayName.toUpperCase()}</span>
-          <span className="text-xs text-muted-foreground">·</span>
-          <span className={cn('text-xs font-semibold', dayPlan.color)}>{dayPlan.muscleGroup}</span>
-          <span className="text-xs text-muted-foreground ml-auto">{dayPlan.exercises.length} ejercicios</span>
-        </div>
-
+      <div className="overflow-y-auto pb-28">
         {/* ── PREVIEW MODE ── */}
         {mode === 'preview' && (
-          <div className="px-4 flex flex-col gap-4">
+          <div className="px-4 py-4 flex flex-col gap-3">
             <div className="flex flex-col gap-2">
               {dayPlan.exercises.map((ex, i) => (
-                <ExercisePreviewCard key={ex.id} exercise={ex} index={i} isActive={i === activeExerciseIdx} onClick={() => setActiveExerciseIdx(i)} />
+                <ExercisePreviewCard key={ex.id} exercise={ex} index={i}
+                  isActive={i === activeExerciseIdx} onClick={() => setActiveExerciseIdx(i)} />
               ))}
             </div>
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="aspect-video w-full bg-muted overflow-hidden">
+
+            {/* Active exercise detail */}
+            <div className="flex flex-col gap-3 mt-2">
+              <div className="aspect-video w-full bg-muted overflow-hidden rounded-2xl">
                 <img
                   src={exercise.imageUrl}
                   alt={exercise.name}
                   className="w-full h-full object-cover"
-                  onError={(e) => { 
+                  onError={(e) => {
                     const t = e.target as HTMLImageElement;
                     t.onerror = null;
                     t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`;
                   }}
                 />
               </div>
-              <div className="p-4 flex flex-col gap-3">
-                <div>
-                  <p className={cn('text-xs font-medium', dayPlan.color)}>{exercise.muscleGroup}</p>
-                  <h2 className="text-lg font-bold text-foreground mt-0.5">{exercise.name}</h2>
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {[
-                    { label: 'Series', value: `${exercise.targetSets}` },
-                    { label: 'Reps', value: `${exercise.targetReps}` },
-                    { label: 'Descanso', value: `${exercise.restSeconds}s` },
-                    { label: 'Tempo', value: exercise.tempo },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="bg-muted rounded-xl px-2 py-2.5 text-center">
-                      <p className="text-[11px] text-muted-foreground">{label}</p>
-                      <p className="text-sm font-bold text-foreground mt-0.5">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="bg-[#1A3A32]/5 dark:bg-emerald-400/5 border border-[#1A3A32]/15 dark:border-emerald-400/15 rounded-xl p-3 flex gap-2">
-                  <Info size={14} className="text-[#1A3A32] dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-foreground/80 leading-relaxed">{exercise.description}</p>
-                </div>
+              <div>
+                <p className={cn('text-xs font-medium', dayPlan.color)}>{exercise.muscleGroup}</p>
+                <h2 className="text-xl font-bold text-foreground mt-0.5">{exercise.name}</h2>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: 'Series', value: `${exercise.targetSets}` },
+                  { label: 'Reps', value: `${exercise.targetReps}` },
+                  { label: 'Descanso', value: `${exercise.restSeconds}s` },
+                  { label: 'Tempo', value: exercise.tempo },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-muted rounded-xl px-2 py-2.5 text-center">
+                    <p className="text-[11px] text-muted-foreground">{label}</p>
+                    <p className="text-sm font-bold text-foreground mt-0.5">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-[#1A3A32]/5 dark:bg-emerald-400/5 border border-[#1A3A32]/15 dark:border-emerald-400/15 rounded-xl p-3 flex gap-2">
+                <Info size={14} className="text-[#1A3A32] dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-foreground/80 leading-relaxed">{exercise.description}</p>
               </div>
             </div>
             <button onClick={() => startRoutine(0)}
@@ -395,47 +582,60 @@ export function WorkoutLoggerScreen() {
         {/* ── ACTIVE MODE ── */}
         {mode === 'active' && (
           <>
+            {/* Image — show ex1 image, or split for superset */}
             <div className="aspect-video w-full bg-muted overflow-hidden">
-              <img
-                src={exercise.imageUrl}
-                alt={exercise.name}
-                className="w-full h-full object-cover"
-                onError={(e) => { 
-                    const t = e.target as HTMLImageElement;
-                    t.onerror = null;
-                    t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`;
-                  }}
-              />
+              {isSuperset && pairedExercise ? (
+                <div className="w-full h-full grid grid-cols-2">
+                  <img src={ex1.imageUrl} alt={ex1.name} className="w-full h-full object-cover"
+                    onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${ex1.youtubeId}/hqdefault.jpg`; }} />
+                  <img src={ex2.imageUrl} alt={ex2.name} className="w-full h-full object-cover border-l border-border/30"
+                    onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${ex2.youtubeId}/hqdefault.jpg`; }} />
+                </div>
+              ) : (
+                <img src={exercise.imageUrl} alt={exercise.name} className="w-full h-full object-cover"
+                  onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`; }} />
+              )}
             </div>
 
             <div className="px-4 py-4 flex flex-col gap-4">
-              <div>
-                <div className="flex items-start justify-between mb-1">
-                  <div>
-                    <p className={cn('text-xs font-medium', dayPlan.color)}>{exercise.muscleGroup}</p>
-                    <h2 className="text-xl font-bold text-foreground">{exercise.name}</h2>
-                  </div>
-                  <div className="flex gap-1.5 mt-1">
-                    {dayPlan.exercises.map((_, i) => (
-                      <button key={i} onClick={() => goToExercise(i)}
-                        className={cn('h-2 rounded-full transition-all duration-200',
-                          i === activeExerciseIdx ? 'w-5 bg-[#1A3A32] dark:bg-emerald-400' : 'w-2 bg-border hover:bg-muted-foreground')} />
-                    ))}
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 gap-2 mt-3">
-                  {[
-                    { label: 'Series', value: `${exercise.targetSets}` },
-                    { label: 'Reps obj.', value: `${exercise.targetReps}` },
-                    { label: 'Descanso', value: `${exercise.restSeconds}s` },
-                    { label: 'Tempo', value: exercise.tempo },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="bg-muted rounded-xl px-2 py-2.5 text-center">
-                      <p className="text-[11px] text-muted-foreground">{label}</p>
-                      <p className="text-sm font-bold text-foreground mt-0.5">{value}</p>
+              {/* Title + dots */}
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className={cn('text-xs font-medium', dayPlan.color)}>
+                    {isSuperset && pairedExercise ? `SUPERSERIE ${superLabel?.group}` : exercise.muscleGroup}
+                  </p>
+                  {isSuperset && pairedExercise ? (
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                      <h2 className="text-base font-bold text-[#1A3A32] dark:text-emerald-400">{cleanName(ex1.name)}</h2>
+                      <span className="text-xs text-muted-foreground">+</span>
+                      <h2 className="text-base font-bold text-purple-600 dark:text-purple-400">{cleanName(ex2.name)}</h2>
                     </div>
+                  ) : (
+                    <h2 className="text-xl font-bold text-foreground mt-0.5">{exercise.name}</h2>
+                  )}
+                </div>
+                <div className="flex gap-1.5 mt-1">
+                  {dayPlan.exercises.map((_, i) => (
+                    <button key={i} onClick={() => goToExercise(i)}
+                      className={cn('h-2 rounded-full transition-all duration-200',
+                        i === activeExerciseIdx ? 'w-5 bg-[#1A3A32] dark:bg-emerald-400' : 'w-2 bg-border hover:bg-muted-foreground')} />
                   ))}
                 </div>
+              </div>
+
+              {/* Stats chips */}
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: 'Series', value: `${exercise.targetSets}` },
+                  { label: 'Reps obj.', value: `${exercise.targetReps}` },
+                  { label: 'Descanso', value: `${exercise.restSeconds}s` },
+                  { label: 'Tempo', value: exercise.tempo },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-muted rounded-xl px-2 py-2.5 text-center">
+                    <p className="text-[11px] text-muted-foreground">{label}</p>
+                    <p className="text-sm font-bold text-foreground mt-0.5">{value}</p>
+                  </div>
+                ))}
               </div>
 
               <div className="bg-[#1A3A32]/5 dark:bg-emerald-400/5 border border-[#1A3A32]/15 dark:border-emerald-400/15 rounded-xl p-3 flex gap-2">
@@ -448,19 +648,45 @@ export function WorkoutLoggerScreen() {
                 <Eye size={14} /> Ver todos los ejercicios
               </button>
 
+              {/* Sets */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-foreground">Series ({completedSets}/{activeWorkoutSets.length})</h3>
-                  <span className="text-xs text-muted-foreground">N° · Reps · Peso</span>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {isSuperset ? `Superserie ${superLabel?.group}` : 'Series'} ({completedSets}/{allSets.length})
+                  </h3>
+                  <span className="text-xs text-muted-foreground">Reps · Peso</span>
                 </div>
+
                 <div className="flex flex-col gap-2">
-                  {activeWorkoutSets.map(row => (
-                    <SetRow key={row.id} row={row} exerciseId={exercise.id} onUpdate={updateSetField} onToggle={handleToggleSet} />
-                  ))}
+                  {isSuperset && pairedExercise ? (
+                    // Superset: render one SupersetSetRow per round
+                    sets1.map((row1, i) => {
+                      const row2 = sets2[i];
+                      if (!row2) return null;
+                      return (
+                        <SupersetSetRow
+                          key={row1.id}
+                          setNum={i + 1}
+                          ex1={ex1} ex2={ex2}
+                          row1={row1} row2={row2}
+                          onUpdate1={(id, field, val) => updateSet(ex1.id, id, field, val)}
+                          onUpdate2={(id, field, val) => updateSet(ex2.id, id, field, val)}
+                          onToggle1={(id) => toggleSet(ex1.id, id, exercise.restSeconds)}
+                          onToggle2={(id) => toggleSet(ex2.id, id, exercise.restSeconds)}
+                        />
+                      );
+                    })
+                  ) : (
+                    sets1.map(row => (
+                      <SetRow key={row.id} row={row} exerciseId={exercise.id}
+                        onUpdate={(id, field, val) => updateSet(exercise.id, id, field, val)}
+                        onToggle={(id) => toggleSet(exercise.id, id, exercise.restSeconds)} />
+                    ))
+                  )}
                 </div>
               </div>
 
-              {/* ── FIX 3: Next exercise preview bar ── */}
+              {/* Next exercise */}
               {nextExercise && (
                 <div className="bg-muted/60 rounded-xl px-4 py-3 flex items-center gap-3">
                   <div className="w-1 h-8 rounded-full bg-[#1A3A32]/30 dark:bg-emerald-400/30 flex-shrink-0" />
@@ -477,13 +703,13 @@ export function WorkoutLoggerScreen() {
               {/* Navigation */}
               <div className="flex gap-2">
                 {activeExerciseIdx > 0 && (
-                  <button onClick={() => goToExercise(activeExerciseIdx - 1)}
+                  <button onClick={goPrev}
                     className="flex-1 h-12 bg-muted rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-2">
                     <ChevronUp size={16} /> Anterior
                   </button>
                 )}
-                {activeExerciseIdx < dayPlan.exercises.length - 1 ? (
-                  <button onClick={() => goToExercise(activeExerciseIdx + 1)}
+                {!isLastExercise ? (
+                  <button onClick={goNext}
                     className="flex-1 h-12 bg-[#1A3A32] dark:bg-emerald-500 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
                     Siguiente <ChevronDown size={16} />
                   </button>
