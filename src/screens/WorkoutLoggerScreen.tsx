@@ -1,140 +1,139 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Pause, Info, History, Play, Eye, GripHorizontal } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronUp, Pause, Info, History, Play, Eye, GripHorizontal, Timer, X } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 import { WEEKLY_PLAN, Exercise } from '@/data/weeklyPlan';
 
-// ─── Persistence helpers ──────────────────────────────────────────────────────
-const STORAGE_KEY = 'workout_weights_v1';
-const TIMER_KEY   = 'workout_timer_v1';
+const WEIGHTS_KEY    = 'workout_weights_v1';
+const REST_TIMER_KEY = 'workout_timer_v1';
+const SESSION_KEY    = 'workout_session_v1';
 
 type SavedWeight  = { weightKg: string; reps: string; date: string };
 type SavedWeights = Record<string, SavedWeight>;
+type SetState     = { id: string; setNumber: number; targetReps: number; actualReps: string; weightKg: string; completed: boolean };
+type SessionData  = { dayKey: string; exerciseIdx: number; setsMap: Record<string, SetState[]>; startedAt: number };
 
-function loadSavedWeights(): SavedWeights {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}'); }
-  catch { return {}; }
+function loadWeights(): SavedWeights {
+  try { return JSON.parse(localStorage.getItem(WEIGHTS_KEY) ?? '{}'); } catch { return {}; }
 }
 function saveWeight(exerciseId: string, setNumber: number, weightKg: string, reps: string) {
-  const key = `${exerciseId}_set${setNumber}`;
-  const all = loadSavedWeights();
-  all[key] = { weightKg, reps, date: new Date().toISOString().split('T')[0] };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  const all = loadWeights();
+  all[`${exerciseId}_set${setNumber}`] = { weightKg, reps, date: new Date().toISOString().split('T')[0] };
+  localStorage.setItem(WEIGHTS_KEY, JSON.stringify(all));
 }
 function getLastWeight(exerciseId: string, setNumber: number): SavedWeight | null {
-  return loadSavedWeights()[`${exerciseId}_set${setNumber}`] ?? null;
+  return loadWeights()[`${exerciseId}_set${setNumber}`] ?? null;
 }
-
-// ─── Timer persistence ────────────────────────────────────────────────────────
-function saveTimerState(endTime: number | null) {
-  if (endTime === null) localStorage.removeItem(TIMER_KEY);
-  else localStorage.setItem(TIMER_KEY, String(endTime));
+function saveRestEnd(v: number | null) {
+  if (v === null) localStorage.removeItem(REST_TIMER_KEY);
+  else localStorage.setItem(REST_TIMER_KEY, String(v));
 }
-function loadTimerEndTime(): number | null {
-  const v = localStorage.getItem(TIMER_KEY);
-  return v ? Number(v) : null;
+function loadRestEnd(): number | null {
+  const v = localStorage.getItem(REST_TIMER_KEY); return v ? Number(v) : null;
 }
-
-// ─── Superset detection ───────────────────────────────────────────────────────
-function getSupersetLabel(name: string): { group: string; order: number } | null {
-  const m = name.match(/\(([A-Z])(\d)\)/);
-  return m ? { group: m[1], order: parseInt(m[2]) } : null;
+function saveSession(d: SessionData | null) {
+  if (d === null) localStorage.removeItem(SESSION_KEY);
+  else localStorage.setItem(SESSION_KEY, JSON.stringify(d));
 }
-function cleanName(name: string) {
-  return name.replace(/\s*\([A-Z]\d\)\s*/g, '').trim();
+function loadSession(): SessionData | null {
+  try { const r = localStorage.getItem(SESSION_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
 }
-
-// ─── Local set state ──────────────────────────────────────────────────────────
-type SetState = { id: string; setNumber: number; targetReps: number; actualReps: string; weightKg: string; completed: boolean };
-
+function vibrate(p: number[]) {
+  try { if ('vibrate' in navigator) navigator.vibrate(p); } catch {}
+}
 function buildSets(targetSets: number, targetReps: number, prefix: string): SetState[] {
   return Array.from({ length: targetSets }, (_, i) => ({
-    id: `${prefix}_s${i + 1}`, setNumber: i + 1, targetReps,
-    actualReps: '', weightKg: '', completed: false,
+    id: `${prefix}_s${i + 1}`, setNumber: i + 1, targetReps, actualReps: '', weightKg: '', completed: false,
   }));
 }
+function getSupersetLabel(name: string): { group: string; order: number } | null {
+  const m = name.match(/\(([A-Z])(\d)\)/); return m ? { group: m[1], order: parseInt(m[2]) } : null;
+}
+function cleanName(name: string) { return name.replace(/\s*\([A-Z]\d\)\s*/g, '').trim(); }
+function fmtTime(s: number) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
 
-// ─── Draggable Rest Timer ─────────────────────────────────────────────────────
+// ─── Workout Duration Banner ──────────────────────────────────────────────────
+function WorkoutBanner({ startedAt, onFinish }: { startedAt: number; onFinish: () => void }) {
+  const [elapsed, setElapsed] = useState(Math.floor((Date.now() - startedAt) / 1000));
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 bg-[#1A3A32] dark:bg-emerald-900">
+      <div className="flex items-center gap-2">
+        <Timer size={14} className="text-emerald-300" />
+        <span className="text-xs font-semibold text-emerald-100">Entrenamiento en curso</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-bold text-white tabular-nums">{fmtTime(elapsed)}</span>
+        <button onClick={onFinish} className="flex items-center gap-1 text-[11px] font-semibold text-emerald-200 bg-emerald-800/60 px-2 py-1 rounded-lg">
+          <X size={11} /> Finalizar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Rest Timer Overlay ───────────────────────────────────────────────────────
 function RestTimerOverlay({ seconds, total, onStop }: { seconds: number; total: number; onStop: () => void }) {
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const dragging = useRef(false);
-  const startPos = useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
-
-  function onMouseDown(e: React.MouseEvent) {
-    dragging.current = true;
-    startPos.current = { mx: e.clientX, my: e.clientY, ox: pos.x, oy: pos.y };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  }
-  function onTouchStart(e: React.TouchEvent) {
-    const t = e.touches[0];
-    dragging.current = true;
-    startPos.current = { mx: t.clientX, my: t.clientY, ox: pos.x, oy: pos.y };
-    window.addEventListener('touchmove', onTouchMove);
-    window.addEventListener('touchend', onTouchEnd);
-  }
-  function onMouseMove(e: MouseEvent) {
-    if (!dragging.current) return;
-    setPos({ x: startPos.current.ox + e.clientX - startPos.current.mx, y: startPos.current.oy + e.clientY - startPos.current.my });
-  }
-  function onTouchMove(e: TouchEvent) {
-    if (!dragging.current) return;
-    const t = e.touches[0];
-    setPos({ x: startPos.current.ox + t.clientX - startPos.current.mx, y: startPos.current.oy + t.clientY - startPos.current.my });
-  }
-  function onMouseUp() { dragging.current = false; window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp); }
-  function onTouchEnd() { dragging.current = false; window.removeEventListener('touchmove', onTouchMove); window.removeEventListener('touchend', onTouchEnd); }
-
+  const sp = useRef({ mx: 0, my: 0, ox: 0, oy: 0 });
+  function onMD(e: React.MouseEvent) { dragging.current = true; sp.current = { mx: e.clientX, my: e.clientY, ox: pos.x, oy: pos.y }; window.addEventListener('mousemove', onMM); window.addEventListener('mouseup', onMU); }
+  function onTS(e: React.TouchEvent) { const t = e.touches[0]; dragging.current = true; sp.current = { mx: t.clientX, my: t.clientY, ox: pos.x, oy: pos.y }; window.addEventListener('touchmove', onTM); window.addEventListener('touchend', onTU); }
+  function onMM(e: MouseEvent) { if (!dragging.current) return; setPos({ x: sp.current.ox + e.clientX - sp.current.mx, y: sp.current.oy + e.clientY - sp.current.my }); }
+  function onTM(e: TouchEvent) { if (!dragging.current) return; const t = e.touches[0]; setPos({ x: sp.current.ox + t.clientX - sp.current.mx, y: sp.current.oy + t.clientY - sp.current.my }); }
+  function onMU() { dragging.current = false; window.removeEventListener('mousemove', onMM); window.removeEventListener('mouseup', onMU); }
+  function onTU() { dragging.current = false; window.removeEventListener('touchmove', onTM); window.removeEventListener('touchend', onTU); }
   const pct = total > 0 ? (total - seconds) / total : 0;
-  const circumference = 2 * Math.PI * 28;
-
+  const circ = 2 * Math.PI * 28;
   return (
-    <div
-      style={{ transform: `translate(calc(-50% + ${pos.x}px), ${pos.y}px)` }}
-      className="fixed bottom-28 left-1/2 z-50 bg-background border border-border rounded-2xl shadow-xl p-4 flex items-center gap-4 min-w-[240px] cursor-grab active:cursor-grabbing select-none"
-    >
-      <div
-        className="absolute top-2 left-1/2 -translate-x-1/2 text-muted-foreground/40 cursor-grab"
-        onMouseDown={onMouseDown}
-        onTouchStart={onTouchStart}
-      >
-        <GripHorizontal size={14} />
-      </div>
+    <div style={{ transform: `translate(calc(-50% + ${pos.x}px), ${pos.y}px)` }}
+      className="fixed bottom-28 left-1/2 z-50 bg-background border border-border rounded-2xl shadow-xl p-4 flex items-center gap-4 min-w-[240px] cursor-grab active:cursor-grabbing select-none">
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 text-muted-foreground/40" onMouseDown={onMD} onTouchStart={onTS}><GripHorizontal size={14} /></div>
       <svg width="64" height="64" className="flex-shrink-0 -rotate-90">
         <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="4" className="text-muted" />
         <circle cx="32" cy="32" r="28" fill="none" stroke="currentColor" strokeWidth="4"
-          strokeDasharray={circumference} strokeDashoffset={circumference * (1 - pct)}
-          strokeLinecap="round" className="text-[#1A3A32] dark:text-emerald-400 transition-all duration-1000" />
-        <text x="32" y="36" textAnchor="middle" className="fill-foreground text-sm font-bold" style={{ fontSize: 14, fontWeight: 700 }} transform="rotate(90, 32, 32)">
-          {seconds}s
-        </text>
+          strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)} strokeLinecap="round" className="text-[#1A3A32] dark:text-emerald-400 transition-all duration-1000" />
+        <text x="32" y="36" textAnchor="middle" fill="currentColor" style={{ fontSize: 14, fontWeight: 700 }} transform="rotate(90,32,32)">{seconds}s</text>
       </svg>
       <div className="flex flex-col min-w-0">
         <p className="text-xs text-muted-foreground">Descanso</p>
         <p className="text-sm font-semibold text-foreground">Próxima serie</p>
       </div>
-      <button onClick={onStop} className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-        <Pause size={14} className="text-muted-foreground" />
-      </button>
+      <button onClick={onStop} className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center"><Pause size={14} className="text-muted-foreground" /></button>
     </div>
   );
 }
 
-// ─── Single Set Row ───────────────────────────────────────────────────────────
+// ─── SetRow ───────────────────────────────────────────────────────────────────
 function SetRow({ row, exerciseId, onUpdate, onToggle }: {
   row: SetState; exerciseId: string;
   onUpdate: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
   onToggle: (id: string) => void;
 }) {
   const last = getLastWeight(exerciseId, row.setNumber);
+  const prevReps = useRef(row.actualReps);
+  const prevKg   = useRef(row.weightKg);
+
+  useEffect(() => {
+    const rFilled = !prevReps.current && !!row.actualReps;
+    const kFilled = !prevKg.current   && !!row.weightKg;
+    prevReps.current = row.actualReps;
+    prevKg.current   = row.weightKg;
+    if ((rFilled || kFilled) && row.actualReps && row.weightKg && !row.completed) onToggle(row.id);
+  }, [row.actualReps, row.weightKg]);
+
   return (
-    <div className={cn('rounded-xl overflow-hidden transition-all duration-200 border',
-      row.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30 bg-[#1A3A32]/5 dark:bg-emerald-400/5' : 'border-border bg-muted/30')}>
-      <div className="grid grid-cols-4 text-center border-b border-border/40 bg-muted/50">
-        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">SERIE</span></div>
-        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">SEM. ANT.</span></div>
-        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">REPS</span></div>
-        <div className="py-1"><span className="text-[9px] font-bold text-muted-foreground">KG</span></div>
+    <div className={cn('rounded-xl overflow-hidden border transition-all',
+      row.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30 bg-[#1A3A32]/5' : 'border-border bg-muted/30')}>
+      <div className="grid grid-cols-4 border-b border-border/40 bg-muted/60">
+        {['SERIE','ANTERIOR','REPS','KG'].map((h, i) => (
+          <div key={h} className={cn('py-1 text-center', i < 3 ? 'border-r border-border/40' : '')}>
+            <span className="text-[9px] font-bold text-muted-foreground">{h}</span>
+          </div>
+        ))}
       </div>
       <div className="grid grid-cols-4 items-center">
         <button onClick={() => onToggle(row.id)}
@@ -145,154 +144,98 @@ function SetRow({ row, exerciseId, onUpdate, onToggle }: {
         </button>
         <div className="flex flex-col items-center justify-center h-14 border-r border-border/40 px-1">
           {last ? (
-            <>
-              <span className="text-xs font-bold text-[#1A3A32] dark:text-emerald-400">{last.weightKg}<span className="text-[9px] font-normal">kg</span></span>
-              <span className="text-[10px] text-muted-foreground">{last.reps}r</span>
-            </>
+            <><span className="text-xs font-bold text-[#1A3A32] dark:text-emerald-400">{last.weightKg}<span className="text-[9px] font-normal">kg</span></span>
+            <span className="text-[10px] text-muted-foreground">{last.reps}r</span></>
           ) : <span className="text-xs text-muted-foreground/40">—</span>}
         </div>
         <div className="flex items-center justify-center h-14 border-r border-border/40 px-1.5">
           <input type="number" inputMode="numeric" value={row.actualReps}
             onChange={e => onUpdate(row.id, 'actualReps', e.target.value)}
-            placeholder={String(row.targetReps)}
-            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30" />
+            placeholder={String(row.targetReps)} disabled={row.completed}
+            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30 disabled:opacity-50" />
         </div>
         <div className="flex items-center justify-center h-14 px-1.5">
-          <input type="number" inputMode="decimal" value={row.weightKg}
+          <input type="number" inputMode="decimal" step="0.5" value={row.weightKg}
             onChange={e => onUpdate(row.id, 'weightKg', e.target.value)}
-            placeholder={last ? last.weightKg : '0'} step="0.5"
-            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30" />
+            placeholder={last ? last.weightKg : '0'} disabled={row.completed}
+            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30 disabled:opacity-50" />
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Superset Row (two exercises side by side per round) ─────────────────────
-function SupersetSetRow({ setNum, ex1, ex2, row1, row2, onUpdate1, onUpdate2, onToggle1, onToggle2 }: {
-  setNum: number;
-  ex1: Exercise; ex2: Exercise;
-  row1: SetState; row2: SetState;
+// ─── SupersetSetRow ───────────────────────────────────────────────────────────
+function SupersetSetRow({ setNum, ex1, ex2, row1, row2, onUpdate1, onUpdate2, onCompleteRound }: {
+  setNum: number; ex1: Exercise; ex2: Exercise; row1: SetState; row2: SetState;
   onUpdate1: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
   onUpdate2: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
-  onToggle1: (id: string) => void;
-  onToggle2: (id: string) => void;
+  onCompleteRound: () => void;
 }) {
   const last1 = getLastWeight(ex1.id, setNum);
   const last2 = getLastWeight(ex2.id, setNum);
-  const bothDone = row1.completed && row2.completed;
-
+  const done  = row1.completed && row2.completed;
   return (
-    <div className={cn('rounded-2xl border-2 overflow-hidden transition-all duration-200',
-      bothDone ? 'border-[#1A3A32]/40 dark:border-emerald-400/40' : 'border-border')}>
-      {/* Round header */}
-      <div className={cn('flex items-center justify-between px-3 py-2 border-b border-border/50',
-        bothDone ? 'bg-[#1A3A32]/8 dark:bg-emerald-400/8' : 'bg-muted/60')}>
-        <span className={cn('text-xs font-bold', bothDone ? 'text-[#1A3A32] dark:text-emerald-400' : 'text-muted-foreground')}>
-          Ronda {setNum}
-        </span>
-        {bothDone && <Check size={12} className="text-[#1A3A32] dark:text-emerald-400" strokeWidth={3} />}
+    <div className={cn('rounded-2xl overflow-hidden border-2 transition-all', done ? 'border-[#1A3A32]/40 opacity-70' : 'border-border bg-card')}>
+      <div className={cn('flex items-center justify-between px-4 py-2 border-b border-border/50', done ? 'bg-[#1A3A32]/8' : 'bg-muted/40')}>
+        <span className={cn('text-xs font-bold', done ? 'text-[#1A3A32] dark:text-emerald-400' : 'text-muted-foreground')}>Ronda {setNum}</span>
+        {done && <div className="flex items-center gap-1 text-[#1A3A32] dark:text-emerald-400"><Check size={12} strokeWidth={3}/><span className="text-[10px] font-semibold">Completada</span></div>}
       </div>
-
-      {/* Two columns */}
       <div className="grid grid-cols-2 divide-x divide-border/50">
-        {/* Exercise 1 */}
-        <div className="flex flex-col gap-2 p-3">
-          <p className="text-[10px] font-bold text-[#1A3A32] dark:text-emerald-400 leading-tight">
-            {cleanName(ex1.name)}
-          </p>
-          {last1 && (
-            <div className="flex items-center gap-1 bg-[#1A3A32]/5 dark:bg-emerald-400/5 rounded-lg px-2 py-1">
-              <History size={9} className="text-[#1A3A32] dark:text-emerald-400 flex-shrink-0" />
-              <span className="text-[10px] text-[#1A3A32] dark:text-emerald-400 font-semibold">{last1.weightKg}kg × {last1.reps}r</span>
+        {[{ ex: ex1, row: row1, last: last1, onUpdate: onUpdate1, color: 'text-[#1A3A32] dark:text-emerald-400', ring: 'focus:ring-[#1A3A32]/30', bg: 'bg-[#1A3A32]/5' },
+          { ex: ex2, row: row2, last: last2, onUpdate: onUpdate2, color: 'text-purple-600 dark:text-purple-400', ring: 'focus:ring-purple-400/30', bg: 'bg-purple-500/5' }]
+          .map(({ ex, row, last, onUpdate, color, ring, bg }) => (
+            <div key={ex.id} className="p-3 flex flex-col gap-2">
+              <p className={cn('text-[10px] font-bold leading-tight truncate', color)}>{cleanName(ex.name)}</p>
+              {last ? (
+                <div className={cn('flex items-center gap-1 rounded-lg px-2 py-1', bg)}>
+                  <History size={9} className={cn('flex-shrink-0', color)} />
+                  <span className={cn('text-[10px] font-semibold', color)}>{last.weightKg}kg × {last.reps}r</span>
+                </div>
+              ) : <div className="h-6" />}
+              <div className="grid grid-cols-2 gap-1.5">
+                {(['actualReps', 'weightKg'] as const).map(field => (
+                  <div key={field} className="flex flex-col items-center gap-0.5">
+                    <span className="text-[9px] text-muted-foreground">{field === 'actualReps' ? 'REPS' : 'KG'}</span>
+                    <input type="number" inputMode={field === 'actualReps' ? 'numeric' : 'decimal'} step={field === 'weightKg' ? '0.5' : undefined}
+                      value={row[field]} onChange={e => onUpdate(row.id, field, e.target.value)}
+                      placeholder={field === 'actualReps' ? String(row.targetReps) : (last ? last.weightKg : '0')}
+                      disabled={done}
+                      className={cn('w-full h-10 text-center text-sm font-semibold bg-background border border-border rounded-xl focus:outline-none focus:ring-2 disabled:opacity-50', ring)} />
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
-          <div className="grid grid-cols-2 gap-1.5">
-            <div className="flex flex-col items-center">
-              <span className="text-[9px] text-muted-foreground mb-0.5">REPS</span>
-              <input type="number" inputMode="numeric" value={row1.actualReps}
-                onChange={e => onUpdate1(row1.id, 'actualReps', e.target.value)}
-                placeholder={String(row1.targetReps)}
-                className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30',
-                  row1.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30' : 'border-border')} />
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-[9px] text-muted-foreground mb-0.5">KG</span>
-              <input type="number" inputMode="decimal" value={row1.weightKg}
-                onChange={e => onUpdate1(row1.id, 'weightKg', e.target.value)}
-                placeholder={last1 ? last1.weightKg : '0'} step="0.5"
-                className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30',
-                  row1.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30' : 'border-border')} />
-            </div>
-          </div>
-          <button onClick={() => onToggle1(row1.id)}
-            className={cn('w-full h-8 rounded-lg border-2 flex items-center justify-center gap-1 text-[11px] font-semibold transition-all',
-              row1.completed
-                ? 'bg-[#1A3A32] dark:bg-emerald-500 border-[#1A3A32] dark:border-emerald-500 text-white'
-                : 'border-border text-muted-foreground')}>
-            {row1.completed ? <><Check size={11} strokeWidth={3} /> OK</> : 'Listo'}
-          </button>
-        </div>
-
-        {/* Exercise 2 */}
-        <div className="flex flex-col gap-2 p-3">
-          <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400 leading-tight">
-            {cleanName(ex2.name)}
-          </p>
-          <div className="grid grid-cols-2 gap-1.5">
-            <div className="flex flex-col items-center">
-              <span className="text-[9px] text-muted-foreground mb-0.5">REPS</span>
-              <input type="number" inputMode="numeric" value={row2.actualReps}
-                onChange={e => onUpdate2(row2.id, 'actualReps', e.target.value)}
-                placeholder={String(row2.targetReps)}
-                className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400/30',
-                  row2.completed ? 'border-purple-400/30' : 'border-border')} />
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-[9px] text-muted-foreground mb-0.5">KG</span>
-              <input type="number" inputMode="decimal" value={row2.weightKg}
-                onChange={e => onUpdate2(row2.id, 'weightKg', e.target.value)}
-                placeholder={last2 ? last2.weightKg : '—'} step="0.5"
-                className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400/30',
-                  row2.completed ? 'border-purple-400/30' : 'border-border')} />
-            </div>
-          </div>
-          {last2 && (
-            <div className="flex items-center gap-1 bg-purple-500/5 rounded-lg px-2 py-1">
-              <History size={9} className="text-purple-500 flex-shrink-0" />
-              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">{last2.weightKg}kg × {last2.reps}r</span>
-            </div>
-          )}
-          <button onClick={() => onToggle2(row2.id)}
-            className={cn('w-full h-8 rounded-lg border-2 flex items-center justify-center gap-1 text-[11px] font-semibold transition-all',
-              row2.completed
-                ? 'bg-purple-600 dark:bg-purple-500 border-purple-600 dark:border-purple-500 text-white'
-                : 'border-border text-muted-foreground')}>
-            {row2.completed ? <><Check size={11} strokeWidth={3} /> OK</> : 'Listo'}
-          </button>
-        </div>
+          ))}
       </div>
+      {!done && (
+        <div className="px-3 pb-3 pt-1">
+          <button onClick={onCompleteRound}
+            className="w-full h-11 bg-[#1A3A32] dark:bg-emerald-500 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
+            <Check size={16} strokeWidth={3} /> Ronda {setNum} completada — iniciar descanso
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Day Selector ─────────────────────────────────────────────────────────────
-const DAY_SELECTED_STYLES: Record<string, string> = {
-  monday:    'border-blue-400 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300',
-  tuesday:   'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
+const DAY_STYLES: Record<string, string> = {
+  monday: 'border-blue-400 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300',
+  tuesday: 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300',
   wednesday: 'border-purple-400 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300',
-  thursday:  'border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
-  friday:    'border-rose-400 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300',
-  saturday:  'border-teal-400 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300',
+  thursday: 'border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300',
+  friday: 'border-rose-400 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300',
+  saturday: 'border-teal-400 bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300',
 };
-
-function DaySelector({ selectedDay, onSelect }: { selectedDay: string; onSelect: (key: string) => void }) {
+function DaySelector({ selectedDay, onSelect }: { selectedDay: string; onSelect: (k: string) => void }) {
   return (
     <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
       {WEEKLY_PLAN.map(day => (
         <button key={day.dayKey} onClick={() => onSelect(day.dayKey)}
-          className={cn('flex flex-col items-center gap-0.5 min-w-[52px] py-2 px-1 rounded-xl border-2 transition-all duration-200',
-            selectedDay === day.dayKey ? DAY_SELECTED_STYLES[day.dayKey] : 'border-border bg-card text-muted-foreground hover:border-border/70')}>
+          className={cn('flex flex-col items-center gap-0.5 min-w-[52px] py-2 px-1 rounded-xl border-2 transition-all',
+            selectedDay === day.dayKey ? DAY_STYLES[day.dayKey] : 'border-border bg-card text-muted-foreground')}>
           <span className="text-[10px] font-bold">{day.dayShort}</span>
           <span className="text-[9px] leading-tight text-center opacity-80">{day.muscleGroup.split(' ')[0]}</span>
         </button>
@@ -302,17 +245,13 @@ function DaySelector({ selectedDay, onSelect }: { selectedDay: string; onSelect:
 }
 
 // ─── Preview card ─────────────────────────────────────────────────────────────
-function ExercisePreviewCard({ exercise, index, isActive, onClick }: {
-  exercise: Exercise; index: number; isActive: boolean; onClick: () => void;
-}) {
+function ExercisePreviewCard({ exercise, index, isActive, onClick }: { exercise: Exercise; index: number; isActive: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={cn('w-full flex items-center gap-3 p-4 rounded-2xl border text-left transition-all duration-200 active:scale-[0.98]',
+      className={cn('w-full flex items-center gap-3 p-4 rounded-2xl border text-left transition-all active:scale-[0.98]',
         isActive ? 'bg-[#1A3A32]/8 dark:bg-emerald-400/8 border-[#1A3A32]/30 dark:border-emerald-400/30' : 'bg-card border-border')}>
       <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-sm font-bold',
-        isActive ? 'bg-[#1A3A32] dark:bg-emerald-500 text-white' : 'bg-muted text-muted-foreground')}>
-        {index + 1}
-      </div>
+        isActive ? 'bg-[#1A3A32] dark:bg-emerald-500 text-white' : 'bg-muted text-muted-foreground')}>{index + 1}</div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-foreground truncate">{exercise.name}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{exercise.muscleGroup} · {exercise.targetSets}×{exercise.targetReps} reps</p>
@@ -327,184 +266,173 @@ export function WorkoutLoggerScreen() {
   const { setActiveScreen, activeWorkoutDayKey, activeWorkoutMode,
     restTimer, restTimerActive, restTimerTotal, startRestTimer, tickRestTimer, stopRestTimer } = useAppStore();
 
-  const [selectedDayKey, setSelectedDayKey] = useState(activeWorkoutDayKey || (() => {
-    const d = new Date().getDay();
-    const keys = ['monday','tuesday','wednesday','thursday','friday','saturday'];
-    return d >= 1 && d <= 6 ? keys[d - 1] : 'monday';
+  const saved = loadSession();
+
+  const [selectedDayKey, setSelectedDayKey] = useState(saved?.dayKey ?? activeWorkoutDayKey ?? (() => {
+    const d = new Date().getDay(); const k = ['monday','tuesday','wednesday','thursday','friday','saturday'];
+    return d >= 1 && d <= 6 ? k[d - 1] : 'monday';
   })());
+  const [mode, setMode]                       = useState<'preview' | 'active'>(saved ? 'active' : (activeWorkoutMode || 'preview'));
+  const [activeExerciseIdx, setActiveExerciseIdx] = useState(saved?.exerciseIdx ?? 0);
+  const [setsMap, setSetsMap]                 = useState<Record<string, SetState[]>>(saved?.setsMap ?? {});
+  const [workoutStartedAt, setWorkoutStartedAt] = useState<number | null>(saved?.startedAt ?? null);
 
-  const [mode, setMode] = useState<'preview' | 'active'>(activeWorkoutMode || 'preview');
-  const [activeExerciseIdx, setActiveExerciseIdx] = useState(0);
-
-  // Local sets state — keyed by exercise id
-  const [setsMap, setSetsMap] = useState<Record<string, SetState[]>>({});
-
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const restTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevRestTimer = useRef(restTimer);
 
   const dayPlan  = WEEKLY_PLAN.find(d => d.dayKey === selectedDayKey)!;
   const exercise = dayPlan.exercises[activeExerciseIdx];
-  const nextExercise = activeExerciseIdx < dayPlan.exercises.length - 1
-    ? dayPlan.exercises[activeExerciseIdx + 1]
-    : null;
 
-  // Detect if current exercise is part of a superset
-  const superLabel = getSupersetLabel(exercise.name);
-  const isSuperset = !!superLabel;
-
-  // Find paired exercise for superset
+  const superLabel    = getSupersetLabel(exercise.name);
+  const isSuperset    = !!superLabel;
   const pairedExercise: Exercise | null = (() => {
     if (!superLabel) return null;
-    const pairedOrder = superLabel.order === 1 ? 2 : 1;
-    return dayPlan.exercises.find(e => {
-      const sl = getSupersetLabel(e.name);
-      return sl?.group === superLabel.group && sl?.order === pairedOrder;
-    }) ?? null;
+    const po = superLabel.order === 1 ? 2 : 1;
+    return dayPlan.exercises.find(e => { const sl = getSupersetLabel(e.name); return sl?.group === superLabel.group && sl?.order === po; }) ?? null;
   })();
-
-  // Always show the "first" exercise of the pair (order=1) so UI is consistent
   const ex1 = (superLabel && superLabel.order === 1) ? exercise : (pairedExercise ?? exercise);
   const ex2 = (superLabel && superLabel.order === 1) ? (pairedExercise ?? exercise) : exercise;
 
-  // When navigating to a superset exercise that is order=2, jump to order=1 instead
+  // Persist session
   useEffect(() => {
-    if (mode === 'active' && superLabel && superLabel.order === 2 && pairedExercise) {
-      const pairIdx = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id);
-      if (pairIdx !== -1 && pairIdx !== activeExerciseIdx) {
-        setActiveExerciseIdx(pairIdx);
-      }
+    if (mode === 'active' && workoutStartedAt)
+      saveSession({ dayKey: selectedDayKey, exerciseIdx: activeExerciseIdx, setsMap, startedAt: workoutStartedAt });
+  }, [mode, selectedDayKey, activeExerciseIdx, setsMap, workoutStartedAt]);
+
+  // Redirect order=2 superset to order=1
+  useEffect(() => {
+    if (mode === 'active' && superLabel?.order === 2 && pairedExercise) {
+      const pi = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id);
+      if (pi !== -1 && pi !== activeExerciseIdx) setActiveExerciseIdx(pi);
     }
   }, [activeExerciseIdx]);
 
-  // Init sets for current exercise(s)
+  // Init sets
   useEffect(() => {
     if (mode !== 'active') return;
     setSetsMap(prev => {
       const next = { ...prev };
-      if (!next[exercise.id]) {
-        next[exercise.id] = buildSets(exercise.targetSets, exercise.targetReps, exercise.id);
-      }
-      if (pairedExercise && !next[pairedExercise.id]) {
+      if (!next[exercise.id]) next[exercise.id] = buildSets(exercise.targetSets, exercise.targetReps, exercise.id);
+      if (pairedExercise && !next[pairedExercise.id])
         next[pairedExercise.id] = buildSets(pairedExercise.targetSets, pairedExercise.targetReps, pairedExercise.id);
-      }
       return next;
     });
   }, [activeExerciseIdx, mode, selectedDayKey]);
 
-  // Reset all when day changes
+  // Reset on manual day change (not from saved session)
   useEffect(() => {
-    setActiveExerciseIdx(0);
-    setMode('preview');
-    setSetsMap({});
+    if (saved) return;
+    setActiveExerciseIdx(0); setMode('preview'); setSetsMap({}); setWorkoutStartedAt(null);
   }, [selectedDayKey]);
 
-  // Timer
+  // Restore rest timer on visibility
   useEffect(() => {
-    function onVisible() {
-      if (document.visibilityState === 'visible') {
-        const endTime = loadTimerEndTime();
-        if (endTime) {
-          const remaining = Math.round((endTime - Date.now()) / 1000);
-          if (remaining > 0) startRestTimer(remaining);
-          else { saveTimerState(null); stopRestTimer(); }
-        }
-      }
+    function onVis() {
+      if (document.visibilityState !== 'visible') return;
+      const end = loadRestEnd();
+      if (!end) return;
+      const rem = Math.round((end - Date.now()) / 1000);
+      if (rem > 0) startRestTimer(rem); else { saveRestEnd(null); stopRestTimer(); }
     }
-    document.addEventListener('visibilitychange', onVisible);
-    onVisible();
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    document.addEventListener('visibilitychange', onVis);
+    onVis();
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
+  // Rest timer tick
   useEffect(() => {
-    if (restTimerActive) {
-      timerRef.current = setInterval(() => tickRestTimer(), 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      saveTimerState(null);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    if (restTimerActive) { restTimerRef.current = setInterval(() => tickRestTimer(), 1000); }
+    else { if (restTimerRef.current) clearInterval(restTimerRef.current); saveRestEnd(null); }
+    return () => { if (restTimerRef.current) clearInterval(restTimerRef.current); };
   }, [restTimerActive, tickRestTimer]);
 
-  // Current sets
+  // Vibrate on rest timer end
+  useEffect(() => {
+    if (prevRestTimer.current > 0 && restTimer === 0 && !restTimerActive) vibrate([200, 100, 200, 100, 400]);
+    prevRestTimer.current = restTimer;
+  }, [restTimer, restTimerActive]);
+
   const sets1 = setsMap[ex1.id] ?? [];
   const sets2 = pairedExercise ? (setsMap[ex2.id] ?? []) : [];
   const allSets = isSuperset ? [...sets1, ...sets2] : sets1;
   const completedSets = allSets.filter(s => s.completed).length;
 
+  const nextExercise = (() => {
+    let next = activeExerciseIdx + 1;
+    if (pairedExercise) { const pi = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id); if (pi === next) next++; }
+    return next < dayPlan.exercises.length ? dayPlan.exercises[next] : null;
+  })();
+
+  function startRestNow(secs: number) { const end = Date.now() + secs * 1000; saveRestEnd(end); startRestTimer(secs); }
+  function handleStopTimer() { saveRestEnd(null); stopRestTimer(); }
+
   function updateSet(exId: string, id: string, field: 'actualReps' | 'weightKg', value: string) {
-    setSetsMap(prev => ({
-      ...prev,
-      [exId]: (prev[exId] ?? []).map(s => s.id === id ? { ...s, [field]: value } : s),
-    }));
+    setSetsMap(prev => ({ ...prev, [exId]: (prev[exId] ?? []).map(s => s.id === id ? { ...s, [field]: value } : s) }));
   }
 
-  function toggleSet(exId: string, id: string, restSecs: number) {
+  function toggleSet(exId: string, id: string) {
     setSetsMap(prev => {
       const rows = prev[exId] ?? [];
       const row = rows.find(s => s.id === id);
-      if (!row) return prev;
-      if (row.weightKg || row.actualReps) {
-        saveWeight(exId, row.setNumber, row.weightKg, row.actualReps || String(row.targetReps));
-      }
-      const endTime = Date.now() + restSecs * 1000;
-      saveTimerState(endTime);
-      startRestTimer(restSecs);
-      return { ...prev, [exId]: rows.map(s => s.id === id ? { ...s, completed: !s.completed } : s) };
+      if (!row || row.completed) return prev;
+      if (row.weightKg || row.actualReps) saveWeight(exId, row.setNumber, row.weightKg, row.actualReps || String(row.targetReps));
+      startRestNow(exercise.restSeconds || 120);
+      return { ...prev, [exId]: rows.map(s => s.id === id ? { ...s, completed: true } : s) };
     });
   }
 
-  function handleStopTimer() { saveTimerState(null); stopRestTimer(); }
+  function completeRound(roundIdx: number) {
+    setSetsMap(prev => {
+      const next = { ...prev };
+      [ex1.id, ...(pairedExercise ? [ex2.id] : [])].forEach(id => {
+        if (!next[id]) return;
+        const row = next[id][roundIdx];
+        if (row) {
+          if (row.weightKg || row.actualReps) saveWeight(id, row.setNumber, row.weightKg, row.actualReps || String(row.targetReps));
+          next[id] = next[id].map((s, i) => i === roundIdx ? { ...s, completed: true } : s);
+        }
+      });
+      return next;
+    });
+    startRestNow(exercise.restSeconds || 120);
+  }
 
-  function startRoutine(idx = 0) {
-    setActiveExerciseIdx(idx);
-    setMode('active');
-    setSetsMap({});
+  function startRoutine() {
+    const t = Date.now();
+    setWorkoutStartedAt(t); setActiveExerciseIdx(0); setMode('active'); setSetsMap({});
+    saveSession({ dayKey: selectedDayKey, exerciseIdx: 0, setsMap: {}, startedAt: t });
+  }
+
+  function finishWorkout() {
+    saveSession(null); saveRestEnd(null); stopRestTimer();
+    setMode('preview'); setSetsMap({}); setWorkoutStartedAt(null); setActiveExerciseIdx(0);
+    setActiveScreen('agenda');
   }
 
   function goToExercise(idx: number) {
-    const target = dayPlan.exercises[idx];
-    const tLabel = getSupersetLabel(target.name);
-    // If navigating to order=2 of a superset, find order=1 instead
-    if (tLabel && tLabel.order === 2) {
-      const pairIdx = dayPlan.exercises.findIndex(e => {
-        const sl = getSupersetLabel(e.name);
-        return sl?.group === tLabel.group && sl?.order === 1;
-      });
-      if (pairIdx !== -1) { setActiveExerciseIdx(pairIdx); return; }
+    const tl = getSupersetLabel(dayPlan.exercises[idx].name);
+    if (tl && tl.order === 2) {
+      const pi = dayPlan.exercises.findIndex(e => { const sl = getSupersetLabel(e.name); return sl?.group === tl.group && sl?.order === 1; });
+      if (pi !== -1) { setActiveExerciseIdx(pi); return; }
     }
     setActiveExerciseIdx(idx);
   }
-
-  // For navigation: next exercise skips the paired one
   function goNext() {
     let next = activeExerciseIdx + 1;
-    if (pairedExercise) {
-      const pairIdx = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id);
-      if (pairIdx === next) next++;
-    }
+    if (pairedExercise) { const pi = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id); if (pi === next) next++; }
     if (next < dayPlan.exercises.length) goToExercise(next);
   }
   function goPrev() {
     let prev = activeExerciseIdx - 1;
-    // If prev is order=2, skip it
-    if (prev >= 0) {
-      const prevEx = dayPlan.exercises[prev];
-      const pl = getSupersetLabel(prevEx.name);
-      if (pl && pl.order === 2) prev--;
-    }
+    if (prev >= 0) { const pl = getSupersetLabel(dayPlan.exercises[prev].name); if (pl?.order === 2) prev--; }
     if (prev >= 0) goToExercise(prev);
   }
 
-  const isLastExercise = (() => {
-    let next = activeExerciseIdx + 1;
-    if (pairedExercise) {
-      const pairIdx = dayPlan.exercises.findIndex(e => e.id === pairedExercise.id);
-      if (pairIdx === next) next++;
-    }
-    return next >= dayPlan.exercises.length;
-  })();
-
   return (
     <div className="flex flex-col min-h-0">
+      {/* Workout duration banner */}
+      {mode === 'active' && workoutStartedAt && <WorkoutBanner startedAt={workoutStartedAt} onFinish={finishWorkout} />}
+
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background border-b border-border px-4 py-3 flex items-center gap-3">
         <button onClick={() => setActiveScreen('agenda')} className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center">
@@ -520,85 +448,66 @@ export function WorkoutLoggerScreen() {
             <p className="text-xs font-bold text-[#1A3A32] dark:text-emerald-400">{activeExerciseIdx + 1}/{dayPlan.exercises.length}</p>
           </div>
         )}
-        {mode === 'preview' && (
-          <DaySelector selectedDay={selectedDayKey} onSelect={k => setSelectedDayKey(k)} />
-        )}
+        {mode === 'preview' && <DaySelector selectedDay={selectedDayKey} onSelect={k => setSelectedDayKey(k)} />}
       </div>
 
       <div className="overflow-y-auto pb-28">
-        {/* ── PREVIEW MODE ── */}
+        {/* PREVIEW */}
         {mode === 'preview' && (
           <div className="px-4 py-4 flex flex-col gap-3">
             <div className="flex flex-col gap-2">
               {dayPlan.exercises.map((ex, i) => (
-                <ExercisePreviewCard key={ex.id} exercise={ex} index={i}
-                  isActive={i === activeExerciseIdx} onClick={() => setActiveExerciseIdx(i)} />
+                <ExercisePreviewCard key={ex.id} exercise={ex} index={i} isActive={i === activeExerciseIdx} onClick={() => setActiveExerciseIdx(i)} />
               ))}
             </div>
-
-            {/* Active exercise detail */}
             <div className="flex flex-col gap-3 mt-2">
               <div className="aspect-video w-full bg-muted overflow-hidden rounded-2xl">
-                <img
-                  src={exercise.imageUrl}
-                  alt={exercise.name}
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    const t = e.target as HTMLImageElement;
-                    t.onerror = null;
-                    t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`;
-                  }}
-                />
+                <img src={exercise.imageUrl} alt={exercise.name} className="w-full h-full object-cover"
+                  onError={e => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`; }} />
               </div>
               <div>
                 <p className={cn('text-xs font-medium', dayPlan.color)}>{exercise.muscleGroup}</p>
                 <h2 className="text-xl font-bold text-foreground mt-0.5">{exercise.name}</h2>
               </div>
               <div className="grid grid-cols-4 gap-2">
-                {[
-                  { label: 'Series', value: `${exercise.targetSets}` },
-                  { label: 'Reps', value: `${exercise.targetReps}` },
-                  { label: 'Descanso', value: `${exercise.restSeconds}s` },
-                  { label: 'Tempo', value: exercise.tempo },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-muted rounded-xl px-2 py-2.5 text-center">
-                    <p className="text-[11px] text-muted-foreground">{label}</p>
-                    <p className="text-sm font-bold text-foreground mt-0.5">{value}</p>
-                  </div>
-                ))}
+                {[['Series', exercise.targetSets], ['Reps', exercise.targetReps], ['Descanso', `${exercise.restSeconds}s`], ['Tempo', exercise.tempo]]
+                  .map(([l, v]) => (
+                    <div key={String(l)} className="bg-muted rounded-xl px-2 py-2.5 text-center">
+                      <p className="text-[11px] text-muted-foreground">{l}</p>
+                      <p className="text-sm font-bold text-foreground mt-0.5">{v}</p>
+                    </div>
+                  ))}
               </div>
-              <div className="bg-[#1A3A32]/5 dark:bg-emerald-400/5 border border-[#1A3A32]/15 dark:border-emerald-400/15 rounded-xl p-3 flex gap-2">
+              <div className="bg-[#1A3A32]/5 border border-[#1A3A32]/15 rounded-xl p-3 flex gap-2">
                 <Info size={14} className="text-[#1A3A32] dark:text-emerald-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-foreground/80 leading-relaxed">{exercise.description}</p>
               </div>
             </div>
-            <button onClick={() => startRoutine(0)}
+            <button onClick={startRoutine}
               className="w-full h-14 bg-[#1A3A32] dark:bg-emerald-500 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
               <Play size={18} className="fill-current" /> Empezar rutina
             </button>
           </div>
         )}
 
-        {/* ── ACTIVE MODE ── */}
+        {/* ACTIVE */}
         {mode === 'active' && (
           <>
-            {/* Image — show ex1 image, or split for superset */}
             <div className="aspect-video w-full bg-muted overflow-hidden">
               {isSuperset && pairedExercise ? (
                 <div className="w-full h-full grid grid-cols-2">
                   <img src={ex1.imageUrl} alt={ex1.name} className="w-full h-full object-cover"
-                    onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${ex1.youtubeId}/hqdefault.jpg`; }} />
+                    onError={e => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${ex1.youtubeId}/hqdefault.jpg`; }} />
                   <img src={ex2.imageUrl} alt={ex2.name} className="w-full h-full object-cover border-l border-border/30"
-                    onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${ex2.youtubeId}/hqdefault.jpg`; }} />
+                    onError={e => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${ex2.youtubeId}/hqdefault.jpg`; }} />
                 </div>
               ) : (
                 <img src={exercise.imageUrl} alt={exercise.name} className="w-full h-full object-cover"
-                  onError={(e) => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`; }} />
+                  onError={e => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`; }} />
               )}
             </div>
 
             <div className="px-4 py-4 flex flex-col gap-4">
-              {/* Title + dots */}
               <div className="flex items-start justify-between">
                 <div>
                   <p className={cn('text-xs font-medium', dayPlan.color)}>
@@ -614,31 +523,25 @@ export function WorkoutLoggerScreen() {
                     <h2 className="text-xl font-bold text-foreground mt-0.5">{exercise.name}</h2>
                   )}
                 </div>
-                <div className="flex gap-1.5 mt-1">
+                <div className="flex gap-1.5 mt-1 flex-wrap justify-end max-w-[100px]">
                   {dayPlan.exercises.map((_, i) => (
                     <button key={i} onClick={() => goToExercise(i)}
-                      className={cn('h-2 rounded-full transition-all duration-200',
-                        i === activeExerciseIdx ? 'w-5 bg-[#1A3A32] dark:bg-emerald-400' : 'w-2 bg-border hover:bg-muted-foreground')} />
+                      className={cn('h-2 rounded-full transition-all', i === activeExerciseIdx ? 'w-5 bg-[#1A3A32] dark:bg-emerald-400' : 'w-2 bg-border')} />
                   ))}
                 </div>
               </div>
 
-              {/* Stats chips */}
               <div className="grid grid-cols-4 gap-2">
-                {[
-                  { label: 'Series', value: `${exercise.targetSets}` },
-                  { label: 'Reps obj.', value: `${exercise.targetReps}` },
-                  { label: 'Descanso', value: `${exercise.restSeconds}s` },
-                  { label: 'Tempo', value: exercise.tempo },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-muted rounded-xl px-2 py-2.5 text-center">
-                    <p className="text-[11px] text-muted-foreground">{label}</p>
-                    <p className="text-sm font-bold text-foreground mt-0.5">{value}</p>
-                  </div>
-                ))}
+                {[['Series', exercise.targetSets], ['Reps obj.', exercise.targetReps], ['Descanso', `${exercise.restSeconds}s`], ['Tempo', exercise.tempo]]
+                  .map(([l, v]) => (
+                    <div key={String(l)} className="bg-muted rounded-xl px-2 py-2.5 text-center">
+                      <p className="text-[11px] text-muted-foreground">{l}</p>
+                      <p className="text-sm font-bold text-foreground mt-0.5">{v}</p>
+                    </div>
+                  ))}
               </div>
 
-              <div className="bg-[#1A3A32]/5 dark:bg-emerald-400/5 border border-[#1A3A32]/15 dark:border-emerald-400/15 rounded-xl p-3 flex gap-2">
+              <div className="bg-[#1A3A32]/5 border border-[#1A3A32]/15 rounded-xl p-3 flex gap-2">
                 <Info size={14} className="text-[#1A3A32] dark:text-emerald-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-foreground/80 leading-relaxed">{exercise.description}</p>
               </div>
@@ -648,74 +551,57 @@ export function WorkoutLoggerScreen() {
                 <Eye size={14} /> Ver todos los ejercicios
               </button>
 
-              {/* Sets */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-semibold text-foreground">
                     {isSuperset ? `Superserie ${superLabel?.group}` : 'Series'} ({completedSets}/{allSets.length})
                   </h3>
-                  <span className="text-xs text-muted-foreground">Reps · Peso</span>
                 </div>
-
                 <div className="flex flex-col gap-2">
                   {isSuperset && pairedExercise ? (
-                    // Superset: render one SupersetSetRow per round
                     sets1.map((row1, i) => {
                       const row2 = sets2[i];
                       if (!row2) return null;
                       return (
-                        <SupersetSetRow
-                          key={row1.id}
-                          setNum={i + 1}
-                          ex1={ex1} ex2={ex2}
-                          row1={row1} row2={row2}
-                          onUpdate1={(id, field, val) => updateSet(ex1.id, id, field, val)}
-                          onUpdate2={(id, field, val) => updateSet(ex2.id, id, field, val)}
-                          onToggle1={(id) => toggleSet(ex1.id, id, exercise.restSeconds)}
-                          onToggle2={(id) => toggleSet(ex2.id, id, exercise.restSeconds)}
-                        />
+                        <SupersetSetRow key={row1.id} setNum={i + 1} ex1={ex1} ex2={ex2} row1={row1} row2={row2}
+                          onUpdate1={(id, f, v) => updateSet(ex1.id, id, f, v)}
+                          onUpdate2={(id, f, v) => updateSet(ex2.id, id, f, v)}
+                          onCompleteRound={() => completeRound(i)} />
                       );
                     })
                   ) : (
                     sets1.map(row => (
                       <SetRow key={row.id} row={row} exerciseId={exercise.id}
-                        onUpdate={(id, field, val) => updateSet(exercise.id, id, field, val)}
-                        onToggle={(id) => toggleSet(exercise.id, id, exercise.restSeconds)} />
+                        onUpdate={(id, f, v) => updateSet(exercise.id, id, f, v)}
+                        onToggle={id => toggleSet(exercise.id, id)} />
                     ))
                   )}
                 </div>
               </div>
 
-              {/* Next exercise */}
               {nextExercise && (
                 <div className="bg-muted/60 rounded-xl px-4 py-3 flex items-center gap-3">
-                  <div className="w-1 h-8 rounded-full bg-[#1A3A32]/30 dark:bg-emerald-400/30 flex-shrink-0" />
+                  <div className="w-1 h-8 rounded-full bg-[#1A3A32]/30 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Siguiente</p>
                     <p className="text-sm font-semibold text-foreground truncate">{nextExercise.name}</p>
                   </div>
-                  <span className="text-xs text-muted-foreground flex-shrink-0">
-                    {nextExercise.targetSets}×{nextExercise.targetReps}
-                  </span>
+                  <span className="text-xs text-muted-foreground">{nextExercise.targetSets}×{nextExercise.targetReps}</span>
                 </div>
               )}
 
-              {/* Navigation */}
               <div className="flex gap-2">
                 {activeExerciseIdx > 0 && (
-                  <button onClick={goPrev}
-                    className="flex-1 h-12 bg-muted rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-2">
+                  <button onClick={goPrev} className="flex-1 h-12 bg-muted rounded-xl text-sm font-semibold text-muted-foreground flex items-center justify-center gap-2">
                     <ChevronUp size={16} /> Anterior
                   </button>
                 )}
-                {!isLastExercise ? (
-                  <button onClick={goNext}
-                    className="flex-1 h-12 bg-[#1A3A32] dark:bg-emerald-500 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                {nextExercise ? (
+                  <button onClick={goNext} className="flex-1 h-12 bg-[#1A3A32] dark:bg-emerald-500 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2">
                     Siguiente <ChevronDown size={16} />
                   </button>
                 ) : (
-                  <button onClick={() => setActiveScreen('agenda')}
-                    className="flex-1 h-12 bg-[#1A3A32] dark:bg-emerald-500 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+                  <button onClick={finishWorkout} className="flex-1 h-12 bg-[#1A3A32] dark:bg-emerald-500 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2">
                     <Check size={16} /> Finalizar sesión
                   </button>
                 )}
