@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Dumbbell, Footprints, Apple, Check, ChevronRight, ArrowLeft, Info, Timer, Plus, X, Eye, Play, History } from 'lucide-react';
+import { Dumbbell, Footprints, Apple, Check, ChevronRight, ArrowLeft, Info, Timer, Plus, X, Eye, Play, History, Settings } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 import { NUTRITION_PLAN, Meal, MealOption } from '@/data/nutritionPlan';
@@ -216,6 +216,151 @@ function NutritionModal({ onClose }: { onClose: () => void }) {
 
 // ─── Cardio Modal ─────────────────────────────────────────────────────────────
 
+
+// ─── Manage Tasks Modal ───────────────────────────────────────────────────────
+function ManageTasksModal({ 
+  date, 
+  tasks,
+  onClose, 
+  onAddWorkout,
+  onRemove
+}: { 
+  date: string;
+  tasks: any[];
+  onClose: () => void;
+  onAddWorkout: () => void;
+  onRemove: (id: string) => void;
+}) {
+  const dayKey = getDayKeyForDate(date);
+  const plan = dayKey ? WEEKLY_PLAN.find(d => d.dayKey === dayKey) : null;
+  const hasWorkout = tasks.some(t => t.task_type === 'workout');
+  const hasSteps = tasks.some(t => t.task_type === 'steps');
+  const hasNutrition = tasks.some(t => t.task_type === 'nutrition');
+  const cardioTasks = tasks.filter(t => t.task_type === 'cardio');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-lg bg-background rounded-t-2xl border-t border-x border-border pb-safe" onClick={e => e.stopPropagation()}>
+        <div className="w-10 h-1 bg-muted-foreground/20 rounded-full mx-auto mt-3 mb-4" />
+        <div className="px-5 pb-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-foreground">Gestionar tareas</h2>
+            <button onClick={onClose} className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center">
+              <X size={16} />
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            {new Date(date + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+
+          <div className="flex flex-col gap-2">
+            {/* Workout */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                  <Dumbbell size={15} className="text-blue-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {plan ? `${plan.dayName} — ${plan.muscleGroup}` : 'Entrenamiento'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {plan ? `${plan.exercises.length} ejercicios` : 'Sin rutina este día'}
+                  </p>
+                </div>
+              </div>
+              {hasWorkout ? (
+                <button onClick={() => { const t = tasks.find(t => t.task_type === 'workout'); if (t) onRemove(t.id); }}
+                  className="text-xs font-semibold text-red-500 px-2.5 py-1 bg-red-500/10 rounded-lg">
+                  Quitar
+                </button>
+              ) : plan ? (
+                <button onClick={onAddWorkout}
+                  className="text-xs font-semibold text-blue-500 px-2.5 py-1 bg-blue-500/10 rounded-lg">
+                  Añadir
+                </button>
+              ) : (
+                <span className="text-xs text-muted-foreground">No disponible</span>
+              )}
+            </div>
+
+            {/* Steps */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <Footprints size={15} className="text-amber-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Meta de pasos</p>
+                  <p className="text-xs text-muted-foreground">10.000 pasos</p>
+                </div>
+              </div>
+              {hasSteps ? (
+                <button onClick={() => { const t = tasks.find(t => t.task_type === 'steps'); if (t) onRemove(t.id); }}
+                  className="text-xs font-semibold text-red-500 px-2.5 py-1 bg-red-500/10 rounded-lg">
+                  Quitar
+                </button>
+              ) : (
+                <span className="text-xs text-muted-foreground/50">Activo</span>
+              )}
+            </div>
+
+            {/* Nutrition */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <Apple size={15} className="text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Nutrición diaria</p>
+                  <p className="text-xs text-muted-foreground">2.400 kcal · 180g proteína</p>
+                </div>
+              </div>
+              {hasNutrition ? (
+                <button onClick={() => { const t = tasks.find(t => t.task_type === 'nutrition'); if (t) onRemove(t.id); }}
+                  className="text-xs font-semibold text-red-500 px-2.5 py-1 bg-red-500/10 rounded-lg">
+                  Quitar
+                </button>
+              ) : (
+                <span className="text-xs text-muted-foreground/50">Inactivo</span>
+              )}
+            </div>
+
+            {/* Cardio sessions */}
+            {cardioTasks.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-semibold text-muted-foreground px-1">Sesiones cardio</p>
+                {cardioTasks.map(t => (
+                  <div key={t.id} className="flex items-center justify-between p-3 rounded-xl bg-muted/50 border border-border">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                        <Timer size={15} className="text-red-500" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{t.title}</p>
+                        <p className="text-xs text-muted-foreground">{t.subtitle}</p>
+                      </div>
+                    </div>
+                    <button onClick={() => onRemove(t.id)}
+                      className="text-xs font-semibold text-red-500 px-2.5 py-1 bg-red-500/10 rounded-lg">
+                      Quitar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button onClick={onClose}
+            className="w-full h-12 bg-[#1A3A32] dark:bg-emerald-500 rounded-2xl text-white font-semibold text-sm">
+            Hecho
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CardioModal({ onClose, onAdd }: { onClose: () => void; onAdd: (type: string, duration: string) => void }) {
   const [type, setType] = useState('Correr');
   const [duration, setDuration] = useState('');
@@ -277,6 +422,33 @@ export function AgendaScreen() {
     <>
       {showNutritionModal && <NutritionModal onClose={() => setShowNutritionModal(false)} />}
       {showCardioModal && <CardioModal onClose={() => setShowCardioModal(false)} onAdd={(t, d) => addCardioTask(selectedDate, t, d)} />}
+      {showManageModal && (
+        <ManageTasksModal
+          date={selectedDate}
+          tasks={dailyTasks}
+          onClose={() => setShowManageModal(false)}
+          onAddWorkout={async () => {
+            const workoutInfo = getWorkoutTitleForDate(selectedDate);
+            if (workoutInfo) {
+              const { supabase } = await import('@/lib/supabase');
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session) {
+                const { data } = await supabase.from('daily_tasks').insert({
+                  user_id: session.user.id, date: selectedDate, task_type: 'workout',
+                  title: workoutInfo.title, subtitle: workoutInfo.subtitle,
+                  completed: false, created_at: new Date().toISOString(),
+                }).select().single();
+                if (data) {
+                  const { useAppStore } = await import('@/store/useAppStore');
+                  useAppStore.getState().fetchDailyTasks(selectedDate);
+                }
+              }
+            }
+            setShowManageModal(false);
+          }}
+          onRemove={(id) => { removeTask(id); }}
+        />
+      )}
       {showWeightsPopup && dayKey && <LastWeightsPopup dayKey={dayKey} onClose={() => setShowWeightsPopup(false)} />}
 
       <div className="flex flex-col gap-5 pb-6">
@@ -330,10 +502,16 @@ export function AgendaScreen() {
         <div className="px-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-foreground">Tareas del día</h2>
-            <button onClick={() => setShowCardioModal(true)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-red-500 px-2.5 py-1.5 bg-red-500/10 rounded-lg">
-              <Plus size={12} /> Añadir cardio
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setShowCardioModal(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-red-500 px-2.5 py-1.5 bg-red-500/10 rounded-lg">
+                <Plus size={12} /> Cardio
+              </button>
+              <button onClick={() => setShowManageModal(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-foreground px-2.5 py-1.5 bg-muted rounded-lg">
+                <Settings size={12} /> Gestionar
+              </button>
+            </div>
           </div>
 
           <div className="flex flex-col gap-3">

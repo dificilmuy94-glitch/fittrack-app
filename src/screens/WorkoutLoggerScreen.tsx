@@ -128,44 +128,42 @@ function SetRow({ row, exerciseId, onUpdate, onToggle }: {
 }) {
   const last = getLastWeight(exerciseId, row.setNumber);
   return (
-    <div className={cn('flex flex-col gap-2 py-3 px-3 rounded-xl transition-all duration-200',
-      row.completed ? 'bg-[#1A3A32]/8 dark:bg-emerald-400/8' : 'bg-muted/50')}>
-      <div className="flex items-center gap-2">
-        <span className={cn('text-xs font-bold w-6 text-center flex-shrink-0',
-          row.completed ? 'text-[#1A3A32] dark:text-emerald-400' : 'text-muted-foreground')}>
-          {row.setNumber}
-        </span>
-        <div className="flex-1 grid grid-cols-2 gap-2">
-          <div className="flex flex-col items-center">
-            <span className="text-[9px] text-muted-foreground mb-0.5">REPS</span>
-            <input type="number" value={row.actualReps}
-              onChange={e => onUpdate(row.id, 'actualReps', e.target.value)}
-              placeholder={String(row.targetReps)}
-              className="w-full h-10 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30" />
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-[9px] text-muted-foreground mb-0.5">KG</span>
-            <input type="number" value={row.weightKg}
-              onChange={e => onUpdate(row.id, 'weightKg', e.target.value)}
-              placeholder={last ? last.weightKg : '—'} step="0.5"
-              className="w-full h-10 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30" />
-          </div>
-        </div>
-        <button onClick={() => onToggle(row.id)}
-          className={cn('w-10 h-10 rounded-xl border-2 flex items-center justify-center flex-shrink-0 transition-all duration-200',
-            row.completed ? 'bg-[#1A3A32] dark:bg-emerald-500 border-[#1A3A32] dark:border-emerald-500' : 'border-border hover:border-[#1A3A32]/50')}>
-          {row.completed && <Check size={16} className="text-white" strokeWidth={3} />}
-        </button>
+    <div className={cn('rounded-xl overflow-hidden transition-all duration-200 border',
+      row.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30 bg-[#1A3A32]/5 dark:bg-emerald-400/5' : 'border-border bg-muted/30')}>
+      <div className="grid grid-cols-4 text-center border-b border-border/40 bg-muted/50">
+        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">SERIE</span></div>
+        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">SEM. ANT.</span></div>
+        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">REPS</span></div>
+        <div className="py-1"><span className="text-[9px] font-bold text-muted-foreground">KG</span></div>
       </div>
-      {last && (
-        <div className="flex items-center gap-1.5 ml-8">
-          <History size={10} className="text-muted-foreground flex-shrink-0" />
-          <span className="text-[10px] text-muted-foreground">
-            Última vez: <span className="font-semibold text-foreground/70">{last.weightKg} kg × {last.reps} reps</span>
-            <span className="ml-1 opacity-50">({last.date})</span>
-          </span>
+      <div className="grid grid-cols-4 items-center">
+        <button onClick={() => onToggle(row.id)}
+          className={cn('flex flex-col items-center justify-center h-14 border-r border-border/40 gap-0.5 transition-all',
+            row.completed ? 'bg-[#1A3A32] dark:bg-emerald-500' : 'hover:bg-muted/60')}>
+          <span className={cn('text-sm font-bold', row.completed ? 'text-white' : 'text-foreground')}>{row.setNumber}</span>
+          {row.completed && <Check size={11} className="text-white" strokeWidth={3} />}
+        </button>
+        <div className="flex flex-col items-center justify-center h-14 border-r border-border/40 px-1">
+          {last ? (
+            <>
+              <span className="text-xs font-bold text-[#1A3A32] dark:text-emerald-400">{last.weightKg}<span className="text-[9px] font-normal">kg</span></span>
+              <span className="text-[10px] text-muted-foreground">{last.reps}r</span>
+            </>
+          ) : <span className="text-xs text-muted-foreground/40">—</span>}
         </div>
-      )}
+        <div className="flex items-center justify-center h-14 border-r border-border/40 px-1.5">
+          <input type="number" inputMode="numeric" value={row.actualReps}
+            onChange={e => onUpdate(row.id, 'actualReps', e.target.value)}
+            placeholder={String(row.targetReps)}
+            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30" />
+        </div>
+        <div className="flex items-center justify-center h-14 px-1.5">
+          <input type="number" inputMode="decimal" value={row.weightKg}
+            onChange={e => onUpdate(row.id, 'weightKg', e.target.value)}
+            placeholder={last ? last.weightKg : '0'} step="0.5"
+            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -203,6 +201,12 @@ function SupersetSetRow({ setNum, ex1, ex2, row1, row2, onUpdate1, onUpdate2, on
           <p className="text-[10px] font-bold text-[#1A3A32] dark:text-emerald-400 leading-tight">
             {cleanName(ex1.name)}
           </p>
+          {last1 && (
+            <div className="flex items-center gap-1 bg-[#1A3A32]/5 dark:bg-emerald-400/5 rounded-lg px-2 py-1">
+              <History size={9} className="text-[#1A3A32] dark:text-emerald-400 flex-shrink-0" />
+              <span className="text-[10px] text-[#1A3A32] dark:text-emerald-400 font-semibold">{last1.weightKg}kg × {last1.reps}r</span>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-1.5">
             <div className="flex flex-col items-center">
               <span className="text-[9px] text-muted-foreground mb-0.5">REPS</span>
@@ -216,16 +220,11 @@ function SupersetSetRow({ setNum, ex1, ex2, row1, row2, onUpdate1, onUpdate2, on
               <span className="text-[9px] text-muted-foreground mb-0.5">KG</span>
               <input type="number" inputMode="decimal" value={row1.weightKg}
                 onChange={e => onUpdate1(row1.id, 'weightKg', e.target.value)}
-                placeholder={last1 ? last1.weightKg : '—'} step="0.5"
+                placeholder={last1 ? last1.weightKg : '0'} step="0.5"
                 className={cn('w-full h-9 text-center text-sm font-semibold bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30',
                   row1.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30' : 'border-border')} />
             </div>
           </div>
-          {last1 && (
-            <p className="text-[9px] text-muted-foreground text-center">
-              Ant: <span className="font-semibold">{last1.weightKg}kg×{last1.reps}</span>
-            </p>
-          )}
           <button onClick={() => onToggle1(row1.id)}
             className={cn('w-full h-8 rounded-lg border-2 flex items-center justify-center gap-1 text-[11px] font-semibold transition-all',
               row1.completed
@@ -259,9 +258,10 @@ function SupersetSetRow({ setNum, ex1, ex2, row1, row2, onUpdate1, onUpdate2, on
             </div>
           </div>
           {last2 && (
-            <p className="text-[9px] text-muted-foreground text-center">
-              Ant: <span className="font-semibold">{last2.weightKg}kg×{last2.reps}</span>
-            </p>
+            <div className="flex items-center gap-1 bg-purple-500/5 rounded-lg px-2 py-1">
+              <History size={9} className="text-purple-500 flex-shrink-0" />
+              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">{last2.weightKg}kg × {last2.reps}r</span>
+            </div>
           )}
           <button onClick={() => onToggle2(row2.id)}
             className={cn('w-full h-8 rounded-lg border-2 flex items-center justify-center gap-1 text-[11px] font-semibold transition-all',
