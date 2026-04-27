@@ -19,24 +19,51 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Safety timeout — never stay stuck loading more than 5s
-    const timeout = setTimeout(() => setLoading(false), 5000);
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session);
-      if (session) {
-        try { await fetchProfile(); } catch (_) {}
+    // 1. Try to read cached session from localStorage SYNCHRONOUSLY — no network needed
+    //    Supabase v2 stores the session under one of these keys
+    let cachedSession: any = null;
+    try {
+      const possibleKeys = [
+        'sb-tdqaylfntqxchehdwnvs-auth-token',
+        'supabase.auth.token',
+      ];
+      for (const key of possibleKeys) {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const tokenData = parsed?.currentSession ?? parsed;
+          if (tokenData?.expires_at && tokenData.expires_at * 1000 > Date.now()) {
+            cachedSession = tokenData;
+            break;
+          }
+        }
       }
-      clearTimeout(timeout);
-      setLoading(false);
-    }).catch(() => {
-      clearTimeout(timeout);
-      setLoading(false);
-    });
+    } catch (_) {}
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    if (cachedSession) {
+      // We have a valid cached session — render immediately, fetch profile in background
+      setSession(cachedSession);
+      setLoading(false);
+      fetchProfile().catch(() => {});
+    } else {
+      // No cache — do a quick network check with 4s max
+      const timeout = setTimeout(() => setLoading(false), 4000);
+      supabase.auth.getSession()
+        .then(async ({ data: { session } }) => {
+          setSession(session);
+          if (session) fetchProfile().catch(() => {});
+        })
+        .catch(() => {})
+        .finally(() => {
+          clearTimeout(timeout);
+          setLoading(false);
+        });
+    }
+
+    // Listen for auth changes (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) await fetchProfile();
+      if (session) fetchProfile().catch(() => {});
     });
 
     return () => subscription.unsubscribe();
