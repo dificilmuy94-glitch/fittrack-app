@@ -3,6 +3,7 @@ import { ArrowLeft, Check, ChevronDown, ChevronUp, Pause, Info, History, Play, E
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
 import { WEEKLY_PLAN, Exercise } from '@/data/weeklyPlan';
+import { ExerciseImage } from '@/components/ExerciseImage';
 
 const WEIGHTS_KEY    = 'workout_weights_v1';
 const REST_TIMER_KEY = 'workout_timer_v1';
@@ -555,10 +556,10 @@ export function WorkoutLoggerScreen() {
               ))}
             </div>
             <div className="flex flex-col gap-3 mt-2">
-              <div className="aspect-video w-full bg-muted overflow-hidden rounded-2xl">
-                <img src={exercise.imageUrl} alt={exercise.name} className="w-full h-full object-cover"
-                  onError={e => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`; }} />
-              </div>
+               <div className="aspect-video w-full bg-white overflow-hidden rounded-2xl">
+                 <ExerciseImage exerciseId={exercise.id} youtubeId={exercise.youtubeId} alt={exercise.name} className="w-full h-full" />
+
+               </div>
               <div>
                 <p className={cn('text-xs font-medium', dayPlan.color)}>{exercise.muscleGroup}</p>
                 <h2 className="text-xl font-bold text-foreground mt-0.5">{exercise.name}</h2>
@@ -589,16 +590,16 @@ export function WorkoutLoggerScreen() {
           <>
             <div className="aspect-video w-full bg-muted overflow-hidden">
               {isSuperset && pairedExercise ? (
-                <div className="w-full h-full grid grid-cols-2">
-                  <img src={ex1.imageUrl} alt={ex1.name} className="w-full h-full object-cover"
-                    onError={e => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${ex1.youtubeId}/hqdefault.jpg`; }} />
-                  <img src={ex2.imageUrl} alt={ex2.name} className="w-full h-full object-cover border-l border-border/30"
-                    onError={e => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${ex2.youtubeId}/hqdefault.jpg`; }} />
-                </div>
-              ) : (
-                <img src={exercise.imageUrl} alt={exercise.name} className="w-full h-full object-cover"
-                  onError={e => { const t = e.target as HTMLImageElement; t.onerror = null; t.src = `https://img.youtube.com/vi/${exercise.youtubeId}/hqdefault.jpg`; }} />
-              )}
+                 <div className="w-full h-full grid grid-cols-2">
+                   <ExerciseImage exerciseId={ex1.id} youtubeId={ex1.youtubeId} alt={ex1.name} className="w-full h-full" />
+                   <ExerciseImage exerciseId={ex2.id} youtubeId={ex2.youtubeId} alt={ex2.name} className="w-full h-full border-l border-border/30" />
+                 </div>
+               ) : (
+                 <ExerciseImage exerciseId={exercise.id} youtubeId={exercise.youtubeId} alt={exercise.name} className="w-full h-full" />
+               )}
+             </div>
+
+
             </div>
 
             <div className="px-4 py-4 flex flex-col gap-4">
