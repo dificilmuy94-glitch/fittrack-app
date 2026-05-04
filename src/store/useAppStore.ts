@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { WEEKLY_PLAN } from '@/data/weeklyPlan';
 
-export type Screen = 'home' | 'agenda' | 'evolution' | 'files' | 'workout-logger' | 'exercise-list';
+export type Screen = 'home' | 'agenda' | 'evolution' | 'files' | 'workout-logger' | 'exercise-list' | 'profile';
 
 export type Profile = {
   id: string;
