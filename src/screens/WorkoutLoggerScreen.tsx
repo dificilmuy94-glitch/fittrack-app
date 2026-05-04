@@ -590,16 +590,13 @@ export function WorkoutLoggerScreen() {
           <>
             <div className="aspect-video w-full bg-muted overflow-hidden">
               {isSuperset && pairedExercise ? (
-                 <div className="w-full h-full grid grid-cols-2">
-                   <ExerciseImage exerciseId={ex1.id} youtubeId={ex1.youtubeId} alt={ex1.name} className="w-full h-full" />
-                   <ExerciseImage exerciseId={ex2.id} youtubeId={ex2.youtubeId} alt={ex2.name} className="w-full h-full border-l border-border/30" />
-                 </div>
-               ) : (
-                 <ExerciseImage exerciseId={exercise.id} youtubeId={exercise.youtubeId} alt={exercise.name} className="w-full h-full" />
-               )}
-             </div>
-
-
+                <div className="w-full h-full grid grid-cols-2">
+                  <ExerciseImage exerciseId={ex1.id} youtubeId={ex1.youtubeId} alt={ex1.name} className="w-full h-full" />
+                  <ExerciseImage exerciseId={ex2.id} youtubeId={ex2.youtubeId} alt={ex2.name} className="w-full h-full border-l border-border/30" />
+                </div>
+              ) : (
+                <ExerciseImage exerciseId={exercise.id} youtubeId={exercise.youtubeId} alt={exercise.name} className="w-full h-full" />
+              )}
             </div>
 
             <div className="px-4 py-4 flex flex-col gap-4">
