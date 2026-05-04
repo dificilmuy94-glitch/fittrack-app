@@ -114,29 +114,21 @@ function SetRow({ row, exerciseId, onUpdate, onToggle }: {
   onToggle: (id: string) => void;
 }) {
   const last = getLastWeight(exerciseId, row.setNumber);
-  const prevReps = useRef(row.actualReps);
-  const prevKg   = useRef(row.weightKg);
-
-  useEffect(() => {
-    const rFilled = !prevReps.current && !!row.actualReps;
-    const kFilled = !prevKg.current   && !!row.weightKg;
-    prevReps.current = row.actualReps;
-    prevKg.current   = row.weightKg;
-    if ((rFilled || kFilled) && row.actualReps && row.weightKg && !row.completed) onToggle(row.id);
-  }, [row.actualReps, row.weightKg]);
+  // Local state so typing doesn't lose focus due to parent re-render
+  const [reps, setReps] = useState(row.actualReps);
+  const [kg, setKg]     = useState(row.weightKg);
 
   return (
-    <div className={cn('rounded-xl overflow-hidden border transition-all',
-      row.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30 bg-[#1A3A32]/5' : 'border-border bg-muted/30')}>
-      <div className="grid grid-cols-4 border-b border-border/40 bg-muted/60">
-        {['SERIE','ANTERIOR','REPS','KG'].map((h, i) => (
-          <div key={h} className={cn('py-1 text-center', i < 3 ? 'border-r border-border/40' : '')}>
-            <span className="text-[9px] font-bold text-muted-foreground">{h}</span>
-          </div>
-        ))}
+    <div className={cn('rounded-xl overflow-hidden transition-all duration-200 border',
+      row.completed ? 'border-[#1A3A32]/30 dark:border-emerald-400/30 bg-[#1A3A32]/5 dark:bg-emerald-400/5' : 'border-border bg-muted/30')}>
+      <div className="grid grid-cols-4 text-center border-b border-border/40 bg-muted/50">
+        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">SERIE</span></div>
+        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">SEM. ANT.</span></div>
+        <div className="py-1 border-r border-border/40"><span className="text-[9px] font-bold text-muted-foreground">REPS</span></div>
+        <div className="py-1"><span className="text-[9px] font-bold text-muted-foreground">KG</span></div>
       </div>
       <div className="grid grid-cols-4 items-center">
-        <button onClick={() => onToggle(row.id)}
+        <button onClick={() => { onUpdate(row.id, 'actualReps', reps); onUpdate(row.id, 'weightKg', kg); onToggle(row.id); }}
           className={cn('flex flex-col items-center justify-center h-14 border-r border-border/40 gap-0.5 transition-all',
             row.completed ? 'bg-[#1A3A32] dark:bg-emerald-500' : 'hover:bg-muted/60')}>
           <span className={cn('text-sm font-bold', row.completed ? 'text-white' : 'text-foreground')}>{row.setNumber}</span>
@@ -144,75 +136,177 @@ function SetRow({ row, exerciseId, onUpdate, onToggle }: {
         </button>
         <div className="flex flex-col items-center justify-center h-14 border-r border-border/40 px-1">
           {last ? (
-            <><span className="text-xs font-bold text-[#1A3A32] dark:text-emerald-400">{last.weightKg}<span className="text-[9px] font-normal">kg</span></span>
-            <span className="text-[10px] text-muted-foreground">{last.reps}r</span></>
+            <>
+              <span className="text-xs font-bold text-[#1A3A32] dark:text-emerald-400">{last.weightKg}<span className="text-[9px] font-normal">kg</span></span>
+              <span className="text-[10px] text-muted-foreground">{last.reps}r</span>
+            </>
           ) : <span className="text-xs text-muted-foreground/40">—</span>}
         </div>
         <div className="flex items-center justify-center h-14 border-r border-border/40 px-1.5">
-          <input type="number" inputMode="numeric" value={row.actualReps}
-            onChange={e => onUpdate(row.id, 'actualReps', e.target.value)}
-            placeholder={String(row.targetReps)} disabled={row.completed}
-            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30 disabled:opacity-50" />
+          <input
+            type="text" inputMode="numeric"
+            value={reps}
+            onChange={e => setReps(e.target.value)}
+            onBlur={() => onUpdate(row.id, 'actualReps', reps)}
+            placeholder={String(row.targetReps)}
+            disabled={row.completed}
+            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30 disabled:opacity-40"
+          />
         </div>
         <div className="flex items-center justify-center h-14 px-1.5">
-          <input type="number" inputMode="decimal" step="0.5" value={row.weightKg}
-            onChange={e => onUpdate(row.id, 'weightKg', e.target.value)}
-            placeholder={last ? last.weightKg : '0'} disabled={row.completed}
-            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30 disabled:opacity-50" />
+          <input
+            type="text" inputMode="decimal"
+            value={kg}
+            onChange={e => setKg(e.target.value)}
+            onBlur={() => onUpdate(row.id, 'weightKg', kg)}
+            placeholder={last ? last.weightKg : '0'}
+            disabled={row.completed}
+            className="w-full h-9 text-center text-sm font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30 disabled:opacity-40"
+          />
         </div>
       </div>
     </div>
   );
 }
-
-// ─── SupersetSetRow ───────────────────────────────────────────────────────────
 function SupersetSetRow({ setNum, ex1, ex2, row1, row2, onUpdate1, onUpdate2, onCompleteRound }: {
-  setNum: number; ex1: Exercise; ex2: Exercise; row1: SetState; row2: SetState;
+  setNum: number;
+  ex1: Exercise; ex2: Exercise;
+  row1: SetState; row2: SetState;
   onUpdate1: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
   onUpdate2: (id: string, field: 'actualReps' | 'weightKg', value: string) => void;
   onCompleteRound: () => void;
 }) {
   const last1 = getLastWeight(ex1.id, setNum);
   const last2 = getLastWeight(ex2.id, setNum);
-  const done  = row1.completed && row2.completed;
+  const roundDone = row1.completed && row2.completed;
+
+  // Local state so typing doesn't lose focus due to parent re-render
+  const [reps1, setReps1] = useState(row1.actualReps);
+  const [kg1, setKg1]     = useState(row1.weightKg);
+  const [reps2, setReps2] = useState(row2.actualReps);
+  const [kg2, setKg2]     = useState(row2.weightKg);
+
+  function handleComplete() {
+    // Flush local state to parent before completing
+    onUpdate1(row1.id, 'actualReps', reps1);
+    onUpdate1(row1.id, 'weightKg', kg1);
+    onUpdate2(row2.id, 'actualReps', reps2);
+    onUpdate2(row2.id, 'weightKg', kg2);
+    // Small delay so state updates propagate before completing
+    setTimeout(onCompleteRound, 50);
+  }
+
   return (
-    <div className={cn('rounded-2xl overflow-hidden border-2 transition-all', done ? 'border-[#1A3A32]/40 opacity-70' : 'border-border bg-card')}>
-      <div className={cn('flex items-center justify-between px-4 py-2 border-b border-border/50', done ? 'bg-[#1A3A32]/8' : 'bg-muted/40')}>
-        <span className={cn('text-xs font-bold', done ? 'text-[#1A3A32] dark:text-emerald-400' : 'text-muted-foreground')}>Ronda {setNum}</span>
-        {done && <div className="flex items-center gap-1 text-[#1A3A32] dark:text-emerald-400"><Check size={12} strokeWidth={3}/><span className="text-[10px] font-semibold">Completada</span></div>}
+    <div className={cn(
+      'rounded-2xl overflow-hidden border-2 transition-all duration-200',
+      roundDone ? 'border-[#1A3A32]/40 dark:border-emerald-400/40 opacity-70' : 'border-border bg-card'
+    )}>
+      {/* Round header */}
+      <div className={cn(
+        'flex items-center justify-between px-4 py-2 border-b border-border/50',
+        roundDone ? 'bg-[#1A3A32]/8 dark:bg-emerald-400/8' : 'bg-muted/40'
+      )}>
+        <span className={cn('text-xs font-bold', roundDone ? 'text-[#1A3A32] dark:text-emerald-400' : 'text-muted-foreground')}>
+          Ronda {setNum}
+        </span>
+        {roundDone && (
+          <div className="flex items-center gap-1 text-[#1A3A32] dark:text-emerald-400">
+            <Check size={12} strokeWidth={3} />
+            <span className="text-[10px] font-semibold">Completada</span>
+          </div>
+        )}
       </div>
+
+      {/* Two exercises side by side */}
       <div className="grid grid-cols-2 divide-x divide-border/50">
-        {[{ ex: ex1, row: row1, last: last1, onUpdate: onUpdate1, color: 'text-[#1A3A32] dark:text-emerald-400', ring: 'focus:ring-[#1A3A32]/30', bg: 'bg-[#1A3A32]/5' },
-          { ex: ex2, row: row2, last: last2, onUpdate: onUpdate2, color: 'text-purple-600 dark:text-purple-400', ring: 'focus:ring-purple-400/30', bg: 'bg-purple-500/5' }]
-          .map(({ ex, row, last, onUpdate, color, ring, bg }) => (
-            <div key={ex.id} className="p-3 flex flex-col gap-2">
-              <p className={cn('text-[10px] font-bold leading-tight truncate', color)}>{cleanName(ex.name)}</p>
-              {last ? (
-                <div className={cn('flex items-center gap-1 rounded-lg px-2 py-1', bg)}>
-                  <History size={9} className={cn('flex-shrink-0', color)} />
-                  <span className={cn('text-[10px] font-semibold', color)}>{last.weightKg}kg × {last.reps}r</span>
-                </div>
-              ) : <div className="h-6" />}
-              <div className="grid grid-cols-2 gap-1.5">
-                {(['actualReps', 'weightKg'] as const).map(field => (
-                  <div key={field} className="flex flex-col items-center gap-0.5">
-                    <span className="text-[9px] text-muted-foreground">{field === 'actualReps' ? 'REPS' : 'KG'}</span>
-                    <input type="number" inputMode={field === 'actualReps' ? 'numeric' : 'decimal'} step={field === 'weightKg' ? '0.5' : undefined}
-                      value={row[field]} onChange={e => onUpdate(row.id, field, e.target.value)}
-                      placeholder={field === 'actualReps' ? String(row.targetReps) : (last ? last.weightKg : '0')}
-                      disabled={done}
-                      className={cn('w-full h-10 text-center text-sm font-semibold bg-background border border-border rounded-xl focus:outline-none focus:ring-2 disabled:opacity-50', ring)} />
-                  </div>
-                ))}
-              </div>
+        {/* Exercise 1 */}
+        <div className="p-3 flex flex-col gap-2">
+          <p className="text-[10px] font-bold text-[#1A3A32] dark:text-emerald-400 leading-tight truncate">
+            {cleanName(ex1.name)}
+          </p>
+          {last1 ? (
+            <div className="flex items-center gap-1 bg-[#1A3A32]/5 dark:bg-emerald-400/5 rounded-lg px-2 py-1">
+              <History size={9} className="text-[#1A3A32] dark:text-emerald-400 flex-shrink-0" />
+              <span className="text-[10px] text-[#1A3A32] dark:text-emerald-400 font-semibold">{last1.weightKg}kg × {last1.reps}r</span>
             </div>
-          ))}
+          ) : <div className="h-6" />}
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="text-[9px] text-muted-foreground">REPS</span>
+              <input
+                type="text" inputMode="numeric"
+                value={reps1}
+                onChange={e => setReps1(e.target.value)}
+                onBlur={() => onUpdate1(row1.id, 'actualReps', reps1)}
+                placeholder={String(row1.targetReps)}
+                disabled={roundDone}
+                className="w-full h-10 text-center text-sm font-semibold bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30 disabled:opacity-50"
+              />
+            </div>
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="text-[9px] text-muted-foreground">KG</span>
+              <input
+                type="text" inputMode="decimal"
+                value={kg1}
+                onChange={e => setKg1(e.target.value)}
+                onBlur={() => onUpdate1(row1.id, 'weightKg', kg1)}
+                placeholder={last1 ? last1.weightKg : '0'}
+                disabled={roundDone}
+                className="w-full h-10 text-center text-sm font-semibold bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-[#1A3A32]/30 disabled:opacity-50"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Exercise 2 */}
+        <div className="p-3 flex flex-col gap-2">
+          <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400 leading-tight truncate">
+            {cleanName(ex2.name)}
+          </p>
+          {last2 ? (
+            <div className="flex items-center gap-1 bg-purple-500/5 rounded-lg px-2 py-1">
+              <History size={9} className="text-purple-500 flex-shrink-0" />
+              <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">{last2.weightKg}kg × {last2.reps}r</span>
+            </div>
+          ) : <div className="h-6" />}
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="text-[9px] text-muted-foreground">REPS</span>
+              <input
+                type="text" inputMode="numeric"
+                value={reps2}
+                onChange={e => setReps2(e.target.value)}
+                onBlur={() => onUpdate2(row2.id, 'actualReps', reps2)}
+                placeholder={String(row2.targetReps)}
+                disabled={roundDone}
+                className="w-full h-10 text-center text-sm font-semibold bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400/30 disabled:opacity-50"
+              />
+            </div>
+            <div className="flex flex-col items-center gap-0.5">
+              <span className="text-[9px] text-muted-foreground">KG</span>
+              <input
+                type="text" inputMode="decimal"
+                value={kg2}
+                onChange={e => setKg2(e.target.value)}
+                onBlur={() => onUpdate2(row2.id, 'weightKg', kg2)}
+                placeholder={last2 ? last2.weightKg : '0'}
+                disabled={roundDone}
+                className="w-full h-10 text-center text-sm font-semibold bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400/30 disabled:opacity-50"
+              />
+            </div>
+          </div>
+        </div>
       </div>
-      {!done && (
+
+      {/* Complete round button */}
+      {!roundDone && (
         <div className="px-3 pb-3 pt-1">
-          <button onClick={onCompleteRound}
-            className="w-full h-11 bg-[#1A3A32] dark:bg-emerald-500 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
-            <Check size={16} strokeWidth={3} /> Ronda {setNum} completada — iniciar descanso
+          <button
+            onClick={handleComplete}
+            className="w-full h-11 bg-[#1A3A32] dark:bg-emerald-500 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+          >
+            <Check size={16} strokeWidth={3} />
+            Ronda {setNum} completada — iniciar descanso
           </button>
         </div>
       )}
