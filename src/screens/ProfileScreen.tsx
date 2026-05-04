@@ -167,7 +167,7 @@ function FoodModal({ food, onClose, onSave }: {
 
 // ─── Main ProfileScreen ───────────────────────────────────────────────────────
 export function ProfileScreen() {
-  const { profile, setActiveScreen } = useAppStore();
+  const { profile } = useAppStore();
 
   const [section, setSection] = useState<'main' | 'exercises' | 'foods'>('main');
   const [exercises, setExercises] = useState<CustomExercise[]>([]);

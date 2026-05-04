@@ -50,6 +50,17 @@ function getDayKeyForDate(dateStr: string): string | null {
   return keys[dow - 1] ?? null;
 }
 
+function getWorkoutTitleForDate(date: string): { title: string; subtitle: string } | null {
+  const dayKey = getDayKeyForDate(date);
+  if (!dayKey) return null;
+  const plan = WEEKLY_PLAN.find(d => d.dayKey === dayKey);
+  if (!plan) return null;
+  return {
+    title: `${plan.dayName} — ${plan.muscleGroup}`,
+    subtitle: `${plan.exercises.length} ejercicios`,
+  };
+}
+
 // ─── Last week weights helper ─────────────────────────────────────────────────
 type SavedWeight = { weightKg: string; reps: string; date: string };
 
@@ -217,24 +228,6 @@ function NutritionModal({ onClose }: { onClose: () => void }) {
 // ─── Cardio Modal ─────────────────────────────────────────────────────────────
 
 
-
-// ─── Get workout info for a date ─────────────────────────────────────────────
-function getDayKeyForDate(date: string): string | null {
-  const d = new Date(date + 'T12:00:00');
-  const keys = [null, 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', null];
-  return keys[d.getDay()] ?? null;
-}
-
-function getWorkoutTitleForDate(date: string): { title: string; subtitle: string } | null {
-  const dayKey = getDayKeyForDate(date);
-  if (!dayKey) return null;
-  const plan = WEEKLY_PLAN.find(d => d.dayKey === dayKey);
-  if (!plan) return null;
-  return {
-    title: `${plan.dayName} — ${plan.muscleGroup}`,
-    subtitle: `${plan.exercises.length} ejercicios`,
-  };
-}
 
 // ─── Manage Tasks Modal ───────────────────────────────────────────────────────
 function ManageTasksModal({ 
